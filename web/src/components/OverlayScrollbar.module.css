@@ -1,0 +1,2 @@
+.track{position:fixed;top:0;bottom:0;right:0;width:10px;z-index:90;pointer-events:none}
+.thumb{position:absolute;top:0;right:2px;width:6px;background:var(--ink-400);box-shadow:0 0 0 2px var(--ink-900);opacity:0;transition:opacity .3s;pointer-events:auto;touch-action:none}

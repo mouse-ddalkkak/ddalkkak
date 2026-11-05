@@ -1,0 +1,116 @@
+{
+  "screen": "공통 · 상단 바(AI 표시 · admin ▾ AI 연결 · 로그아웃)",
+  "source": "docs/openapi.yaml ④ 예시에서 뽑음 · 고칠 때는 openapi.yaml을 고치고 python scripts/screen_contracts.py",
+  "calls": {
+    "GET /api/auth/me": {
+      "summary": "로그인 확인 · 헤더 admin 표시",
+      "owner": [
+        "B2"
+      ],
+      "responses": {
+        "200": {
+          "username": "admin"
+        }
+      }
+    },
+    "POST /api/auth/logout": {
+      "summary": "로그아웃 (헤더 admin ▾)",
+      "owner": [
+        "B2"
+      ],
+      "responses": {
+        "204": null
+      }
+    },
+    "GET /api/ai-settings": {
+      "summary": "AI 설정 (헤더 \"AI 연결됨 / AI 없음\" · 팝업 초깃값)",
+      "owner": [
+        "B2"
+      ],
+      "responses": {
+        "200": {
+          "provider": "claude",
+          "baseUrl": null,
+          "model": "claude-sonnet-5-5",
+          "keyMasked": "sk-…7f2a",
+          "connected": true
+        },
+        "200 none": {
+          "provider": null,
+          "baseUrl": null,
+          "model": null,
+          "keyMasked": null,
+          "connected": false
+        }
+      }
+    },
+    "PUT /api/ai-settings": {
+      "summary": "AI 설정 저장 — 연결 확인이 성공한 값",
+      "owner": [
+        "B2"
+      ],
+      "request": {
+        "provider": "claude",
+        "baseUrl": null,
+        "key": "sk-ant-xxxx7f2a",
+        "model": "claude-sonnet-5-5"
+      },
+      "responses": {
+        "200": {
+          "provider": "claude",
+          "baseUrl": null,
+          "model": "claude-sonnet-5-5",
+          "keyMasked": "sk-…7f2a",
+          "connected": true
+        },
+        "400": {
+          "code": "INVALID_URL",
+          "message": "주소를 확인해 주세요 · http(s)://…"
+        }
+      }
+    },
+    "POST /api/ai-settings/check": {
+      "summary": "AI 연결 확인 → /ai/check",
+      "owner": [
+        "B2"
+      ],
+      "request": {
+        "provider": "claude",
+        "baseUrl": null,
+        "key": "sk-ant-xxxx7f2a",
+        "model": "claude-sonnet-5-5"
+      },
+      "responses": {
+        "200 ok": {
+          "ok": true,
+          "shown": "Claude · 기본 모델",
+          "message": "연결됐어요 · 키는 이 서버에만 저장돼요"
+        },
+        "200 keyShort": {
+          "ok": false,
+          "shown": null,
+          "message": "키가 너무 짧아요 · 다시 확인해 주세요"
+        },
+        "400": {
+          "code": "INVALID_URL",
+          "message": "주소를 확인해 주세요 · http(s)://…"
+        }
+      }
+    }
+  },
+  "errors": {
+    "401": {
+      "code": "NOT_LOGGED_IN",
+      "message": "다시 로그인해 주세요"
+    },
+    "400": {
+      "code": "BAD_REQUEST",
+      "message": "요청 형식을 확인해 주세요"
+    },
+    "500": {
+      "code": "SERVER_ERROR",
+      "message": "잠시 후 다시 해 주세요"
+    },
+    "note": "401은 0-1·0-2 외 모든 /api/* → 화면은 0-2로. 400 · 500은 모든 /api/*"
+  }
+}

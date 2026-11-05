@@ -1,0 +1,25 @@
+{
+  "screen": "0-2 로그인",
+  "source": "docs/openapi.yaml ④ 예시에서 뽑음 · 고칠 때는 openapi.yaml을 고치고 python scripts/screen_contracts.py",
+  "calls": {
+    "POST /api/auth/login": {
+      "summary": "0-2 로그인",
+      "owner": [
+        "B2"
+      ],
+      "request": {
+        "username": "admin",
+        "password": "kq7X-m2p9-Rtb4-Lw8s"
+      },
+      "responses": {
+        "200": {
+          "firstLogin": true
+        },
+        "401": {
+          "code": "LOGIN_FAILED",
+          "message": "아이디 또는 비밀번호가 맞지 않아요"
+        }
+      }
+    }
+  }
+}

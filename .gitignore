@@ -1,0 +1,13 @@
+.env
+.idea/
+.vscode/
+.DS_Store
+
+# web
+node_modules/
+web/dist/
+web/design/
+
+# ai
+__pycache__/
+.venv/

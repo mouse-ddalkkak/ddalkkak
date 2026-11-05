@@ -1,0 +1,2 @@
+/* 크림색 위아래 두 칸(그라데이션 아님) + 빨간 숫자 — 토큰 surface-pill-* · text-digit */
+.pill{align-self:center;padding:8px 22px;border:4px solid var(--ink-900);border-radius:var(--radius-pill);background:linear-gradient(var(--surface-pill-top) 50%,var(--surface-pill-bottom) 50%);box-shadow:var(--shadow-hard);font:var(--type-digit);letter-spacing:4px;color:var(--text-digit)}

@@ -1,0 +1,14 @@
+.sub{font:var(--type-caption);color:var(--ink-400)}
+.sentence{font:var(--type-body);font-size:18px;letter-spacing:1px;color:var(--white)}
+.choices{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:10px}
+.choice{appearance:none;margin:0;display:flex;flex-direction:column;gap:6px;padding:10px 12px;border:4px dotted var(--ink-600);background:transparent;color:var(--ink-300);text-align:left;cursor:pointer}
+.choice:hover{border-color:var(--cyan-300)}
+.choice[data-on]{border-style:solid;border-color:var(--cyan-300);background:var(--ink-800);color:var(--white)}
+.choiceLabel{font:var(--type-small);letter-spacing:1px}
+.choiceSub{font:var(--type-caption);color:var(--ink-400)}
+.estimate{font:var(--type-caption);color:var(--ink-300)}
+.direct summary{font:var(--type-small);letter-spacing:1px;color:var(--ink-300);cursor:pointer}
+.nums{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;padding-top:12px}
+.numField{display:flex;flex-direction:column;gap:6px}
+.numLabel{font:var(--type-small);letter-spacing:1px;color:var(--ink-400)}
+.grow{flex:1}

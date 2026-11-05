@@ -1,0 +1,77 @@
+{
+  "screen": "8 이력",
+  "source": "docs/openapi.yaml ④ 예시에서 뽑음 · 고칠 때는 openapi.yaml을 고치고 python scripts/screen_contracts.py",
+  "calls": {
+    "GET /api/runs": {
+      "summary": "8 이력 · 점수 변화",
+      "owner": [
+        "B2"
+      ],
+      "responses": {
+        "200": {
+          "total": 4,
+          "runs": [
+            {
+              "runId": "run_5",
+              "at": "2026-11-07T14:35:00+09:00",
+              "status": "done",
+              "tags": [
+                "최신"
+              ],
+              "scenarioCount": 12,
+              "codeSource": "GitHub a3f9c1",
+              "scores": {
+                "perf": 68,
+                "sec": 79,
+                "code": 92
+              },
+              "fixCount": 4
+            },
+            {
+              "runId": "run_4",
+              "at": "2026-11-06T14:02:00+09:00",
+              "status": "partial",
+              "tags": [
+                "일부 완료 · 성능 중단됨"
+              ],
+              "scenarioCount": 10,
+              "codeSource": null,
+              "scores": {
+                "perf": 61,
+                "sec": 83,
+                "code": null
+              },
+              "fixCount": 3
+            }
+          ],
+          "trend": {
+            "perf": [
+              54,
+              null,
+              61,
+              68
+            ],
+            "sec": [
+              80,
+              82,
+              83,
+              79
+            ],
+            "code": [
+              null,
+              null,
+              null,
+              92
+            ],
+            "at": [
+              "2026-11-04T14:00:00+09:00",
+              "2026-11-05T14:00:00+09:00",
+              "2026-11-06T14:02:00+09:00",
+              "2026-11-07T14:35:00+09:00"
+            ]
+          }
+        }
+      }
+    }
+  }
+}

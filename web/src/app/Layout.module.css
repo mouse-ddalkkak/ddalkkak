@@ -1,0 +1,4 @@
+/* Pixel Flow 루트: zoom .8 기준으로 그린 디자인이라 그대로 둔다 (min-height 125dvh = zoom 보정) */
+.root{zoom:.8;position:relative;overflow:clip;min-height:125dvh;display:flex;flex-direction:column;background-color:var(--ink-900);color:var(--ink-50);font-family:var(--font-display)}
+.main{position:relative;z-index:1;flex:1;min-height:0;width:100%;max-width:var(--page-max);margin:0 auto;padding:40px var(--pad-page-x) 72px;display:flex;flex-direction:column}
+.flow{width:100%;max-width:var(--page-content);margin:0 auto 38px}

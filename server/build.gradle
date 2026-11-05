@@ -1,0 +1,41 @@
+plugins {
+	id 'java'
+	id 'org.springframework.boot' version '4.1.2'
+	id 'io.spring.dependency-management' version '1.1.7'
+}
+
+group = 'io.ddalkkak'
+version = '0.0.1-SNAPSHOT'
+description = 'ddalkkak server'
+
+java {
+	toolchain {
+		languageVersion = JavaLanguageVersion.of(21)
+	}
+}
+
+repositories {
+	mavenCentral()
+}
+
+dependencies {
+	implementation 'org.springframework.boot:spring-boot-starter-actuator'
+	implementation 'org.springframework.boot:spring-boot-starter-webmvc'
+	implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+	implementation 'org.springframework.boot:spring-boot-starter-flyway'
+	implementation 'org.springframework.security:spring-security-crypto'
+	runtimeOnly 'org.flywaydb:flyway-database-postgresql'
+	runtimeOnly 'org.postgresql:postgresql'
+	testImplementation 'org.springframework.boot:spring-boot-starter-actuator-test'
+	testImplementation 'org.springframework.boot:spring-boot-starter-webmvc-test'
+	testAndDevelopmentOnly 'com.h2database:h2'
+	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+tasks.named('test') {
+	useJUnitPlatform()
+	// 셸에 DB_URL 이 있어도 테스트는 늘 H2 메모리 DB 로 돈다 (deleteAll 이 진짜 DB 를 지우지 않게)
+	environment 'DB_URL', ''
+	// 시험 컨텍스트가 뜰 때마다 남은 도구 컨테이너를 지우면 같은 PC 에서 검사 중인 bootRun 딸깍의 도구까지 지운다 (-197). LeftoverToolsTest 는 직접 부른다
+	systemProperty 'ddalkkak.scan.cleanup-leftovers', 'false'
+}

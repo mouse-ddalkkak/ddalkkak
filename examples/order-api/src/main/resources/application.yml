@@ -1,0 +1,22 @@
+spring:
+  application:
+    name: order-api
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5433/orderapi}
+    username: ${DB_USERNAME:orderapi}
+    password: ${DB_PASSWORD:orderapi}
+  jpa:
+    # 켤 때마다 같은 시드로 다시 시작해 검사 결과가 매번 같게
+    hibernate:
+      ddl-auto: create
+    open-in-view: true
+    properties:
+      # 요청(세션)마다 "N JDBC statements executed" 로그 — 심은 문제 ① 확인용
+      hibernate.generate_statistics: true
+
+server:
+  port: 8080
+
+logging:
+  level:
+    org.hibernate.engine.internal.StatisticalLoggingSessionEventListener: INFO

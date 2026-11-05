@@ -1,0 +1,33 @@
+{
+  "screen": "0-1 설치",
+  "source": "docs/openapi.yaml ④ 예시에서 뽑음 · 고칠 때는 openapi.yaml을 고치고 python scripts/screen_contracts.py",
+  "calls": {
+    "GET /api/setup": {
+      "summary": "0-1 1회용 비밀번호",
+      "owner": [
+        "B2"
+      ],
+      "responses": {
+        "200 first": {
+          "needsAck": true,
+          "username": "admin",
+          "oneTimePassword": "kq7X-m2p9-Rtb4-Lw8s"
+        },
+        "200 acked": {
+          "needsAck": false,
+          "username": "admin",
+          "oneTimePassword": null
+        }
+      }
+    },
+    "POST /api/setup/ack": {
+      "summary": "0-1 \"저장했어요\" — 원문 폐기",
+      "owner": [
+        "B2"
+      ],
+      "responses": {
+        "204": null
+      }
+    }
+  }
+}

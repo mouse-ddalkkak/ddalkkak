@@ -1,0 +1,9 @@
+.dialog{width:min(640px,calc(100% - 48px));padding:24px;border:4px solid var(--ink-50);background:var(--ink-900);color:var(--ink-50);box-shadow:var(--shadow-hard)}
+.dialog[open]{display:flex;flex-direction:column;gap:18px;animation:ttk-pop .2s steps(3) both}
+.dialog::backdrop{background:var(--surface-overlay)}
+.dialog:focus{outline:none}
+.head{display:flex;align-items:center;gap:12px}
+.title{flex:1;font:var(--type-label);letter-spacing:2px;color:var(--cyan-300)}
+.close{appearance:none;margin:0;padding:4px 8px;border:0;background:transparent;color:var(--ink-400);font:var(--type-body);cursor:pointer}
+.close:hover{color:var(--white)}
+.actions{display:flex;align-items:center;gap:12px;flex-wrap:wrap}

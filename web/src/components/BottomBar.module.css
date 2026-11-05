@@ -1,0 +1,6 @@
+/* 하단 바는 화면 아래에 붙인다(sticky) — 긴 화면에서도 메시지가 스크롤 없이 보이게 (-139). Layout .root 는 overflow:clip 이어야 sticky 가 화면 기준으로 붙는다 */
+.footer{position:sticky;bottom:0;z-index:1;flex:none;background-color:var(--band-500);background-image:var(--bg-band-dots);background-size:var(--bg-band-dots-size);background-position:var(--bg-band-dots-pos)}
+.inner{position:relative;width:100%;max-width:var(--page-max);margin:0 auto;padding:24px 40px 28px;height:80px;display:flex;align-items:center;gap:24px;font:400 17px/1 var(--font-display);letter-spacing:1.5px;color:var(--white)}
+.grow{flex:1}
+.msg{display:flex;align-items:center;gap:10px;white-space:nowrap}
+.cursor{display:flex;zoom:.7}

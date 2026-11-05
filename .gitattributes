@@ -1,0 +1,4 @@
+# Windows(autocrlf)에서 받아도 컨테이너 안 스크립트(gradlew 등)가 깨지지 않게 LF로 고정
+* text=auto eol=lf
+*.bat text eol=crlf
+*.cmd text eol=crlf

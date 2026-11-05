@@ -1,0 +1,4 @@
+.line{color:var(--ink-300)}
+.error{color:var(--coral-400)}
+.tag{color:var(--ink-400)}
+.error .tag{color:inherit}

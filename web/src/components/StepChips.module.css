@@ -1,0 +1,9 @@
+.row{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.dots{width:40px;border-top:4px dotted var(--ink-600)}
+.chip{position:relative;padding:10px 14px;border:4px solid;font:var(--type-label);font-size:15px;font-weight:500;letter-spacing:2px;white-space:nowrap}
+.done{background:transparent;color:var(--green-400);border-color:var(--green-400)}
+.on{background:var(--band-500);color:var(--white);border-color:var(--chip-on-border)}
+.todo{background:transparent;color:var(--ink-400);border-color:var(--ink-700)}
+/* 진행 중 칩 테두리를 도는 빛 */
+.glow{position:absolute;inset:-4px;padding:4px;overflow:hidden;pointer-events:none;-webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask:linear-gradient(#000 0 0) content-box exclude,linear-gradient(#000 0 0)}
+.spin{position:absolute;left:50%;top:50%;width:160%;aspect-ratio:1;background:conic-gradient(from 0deg,transparent 0 290deg,var(--glow-dim) 320deg,var(--white) 350deg,transparent 360deg);animation:ttk-spin 2.4s linear infinite}

@@ -1,0 +1,66 @@
+{
+  "screen": "1 홈 (10초마다)",
+  "source": "docs/openapi.yaml ④ 예시에서 뽑음 · 고칠 때는 openapi.yaml을 고치고 python scripts/screen_contracts.py",
+  "calls": {
+    "GET /api/home": {
+      "summary": "1 홈 — 서버 상태 · 서비스 줄 · 지난 검사 (10초마다)",
+      "owner": [
+        "B2"
+      ],
+      "responses": {
+        "200": {
+          "service": {
+            "id": "svc_1",
+            "name": "order-api",
+            "connected": true,
+            "apiCount": 14
+          },
+          "health": {
+            "cpu": 0.23,
+            "mem": {
+              "usedMb": 5018,
+              "totalMb": 8192
+            },
+            "disk": {
+              "usedGb": 38,
+              "totalGb": 80
+            },
+            "uptimeSec": 309600,
+            "serverTime": "2026-11-07T15:10:00+09:00"
+          },
+          "lastRun": {
+            "runId": "run_5",
+            "at": "2026-11-07T14:35:00+09:00",
+            "scores": {
+              "perf": 68,
+              "sec": 79,
+              "code": 92
+            },
+            "topDanger": "보안 1 · SQL 문자열 연결",
+            "topWarn": "성능 2 · N+1 의심 · 커넥션 풀 대기",
+            "passed": 35,
+            "skipped": {
+              "count": 11,
+              "reason": "계정 없음"
+            }
+          }
+        },
+        "200 notConnected": {
+          "service": null,
+          "health": null,
+          "lastRun": null
+        },
+        "200 offline": {
+          "service": {
+            "id": "svc_1",
+            "name": "order-api",
+            "connected": false,
+            "apiCount": 14
+          },
+          "health": null,
+          "lastRun": null
+        }
+      }
+    }
+  }
+}

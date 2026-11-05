@@ -1,0 +1,16 @@
+/* Galmuri — Lee Minseo, SIL Open Font License 1.1 (../assets/fonts/OFL.txt). 설치 서버가 인터넷에 안 닿을 수 있어 CDN 대신 파일로 둔다 */
+@font-face{font-family:'Galmuri11';font-style:normal;font-weight:400;font-display:swap;src:url('../assets/fonts/Galmuri11.woff2') format('woff2')}
+@font-face{font-family:'Galmuri11';font-style:normal;font-weight:700;font-display:swap;src:url('../assets/fonts/Galmuri11-Bold.woff2') format('woff2')}
+@font-face{font-family:'Galmuri14';font-style:normal;font-weight:400;font-display:swap;src:url('../assets/fonts/Galmuri14.woff2') format('woff2')}
+
+*,*::before,*::after{box-sizing:border-box}
+/* 기본 스크롤바는 숨기고 components/OverlayScrollbar가 화면 위에 겹쳐 그린다 (스크롤바 때문에 레이아웃이 좌우로 밀리지 않게). 휠 · 키보드 스크롤은 그대로 */
+html{scrollbar-width:none}
+html::-webkit-scrollbar{display:none}
+html,body{margin:0;background:var(--ink-900);color:var(--ink-50);font-family:var(--font-display);-webkit-font-smoothing:none;-moz-osx-font-smoothing:unset;font-smooth:never}
+h1,h2,h3,p{margin:0}
+a{color:var(--cyan-300)}a:hover{color:var(--white)}
+button{font:inherit;color:inherit}
+input::placeholder,textarea::placeholder{color:var(--ink-400)}
+img{image-rendering:pixelated}
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}

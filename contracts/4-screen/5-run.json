@@ -1,0 +1,259 @@
+{
+  "screen": "5 검사 진행",
+  "source": "docs/openapi.yaml ④ 예시에서 뽑음 · 고칠 때는 openapi.yaml을 고치고 python scripts/screen_contracts.py",
+  "calls": {
+    "GET /api/runs/{id}/events": {
+      "summary": "5 진행 실시간 (SSE)",
+      "owner": [
+        "B3"
+      ],
+      "events": [
+        {
+          "event": "progress",
+          "data": {
+            "pct": 42,
+            "leftMin": 13,
+            "step": "perf",
+            "item": "perf-2"
+          }
+        },
+        {
+          "event": "log",
+          "data": {
+            "ts": "2026-11-07T14:40:31+09:00",
+            "tag": "k6",
+            "text": "vus=120 · http_req_duration p(95)=2.1s"
+          }
+        },
+        {
+          "event": "error",
+          "data": {
+            "step": "perf",
+            "item": "perf-2",
+            "title": "주문 상세 피크",
+            "ts": "2026-11-07T14:41:08+09:00",
+            "text": "서버가 응답을 멈췄어요",
+            "lines": [
+              "14:40:38 [k6] GET /api/orders/{id} 30s 초과 (1/3)",
+              "14:40:53 [k6] GET /api/orders/{id} 30s 초과 (2/3)",
+              "14:41:08 [k6] GET /api/orders/{id} 30s 초과 (3/3) · 도구 일시정지"
+            ]
+          }
+        },
+        {
+          "event": "done",
+          "data": {
+            "status": "done"
+          }
+        }
+      ],
+      "responses": {
+        "404": {
+          "code": "NOT_FOUND",
+          "message": "찾을 수 없어요"
+        }
+      }
+    },
+    "GET /api/runs/{id}/progress": {
+      "summary": "5 지금 상태 스냅샷 (다시 붙을 때)",
+      "owner": [
+        "B3"
+      ],
+      "responses": {
+        "200": {
+          "status": "running",
+          "pct": 42,
+          "leftMin": 13,
+          "steps": [
+            {
+              "step": "check",
+              "name": "연결 확인",
+              "state": "done",
+              "items": []
+            },
+            {
+              "step": "auth",
+              "name": "테스트 계정",
+              "state": "done",
+              "items": [
+                {
+                  "key": "sec-1",
+                  "title": "테스트 계정 만들기",
+                  "state": "done"
+                }
+              ]
+            },
+            {
+              "step": "sec",
+              "name": "1 보안",
+              "state": "done",
+              "items": [
+                {
+                  "key": "sec-2",
+                  "title": "입력값 인젝션",
+                  "state": "done"
+                },
+                {
+                  "key": "sec-3",
+                  "title": "남의 주문 보기",
+                  "state": "done"
+                },
+                {
+                  "key": "sec-4",
+                  "title": "관리자 API 비로그인",
+                  "state": "done"
+                },
+                {
+                  "key": "sec-5",
+                  "title": "남의 주문 취소",
+                  "state": "skipped",
+                  "skipReason": "계정 없음"
+                },
+                {
+                  "key": "sec-6",
+                  "title": "로그인 무차별 대입",
+                  "state": "done"
+                }
+              ]
+            },
+            {
+              "step": "perf",
+              "name": "2 성능",
+              "state": "running",
+              "items": [
+                {
+                  "key": "perf-1",
+                  "title": "주문 목록 피크",
+                  "state": "done"
+                },
+                {
+                  "key": "perf-2",
+                  "title": "주문 상세 피크",
+                  "state": "running"
+                },
+                {
+                  "key": "perf-3",
+                  "title": "주문 목록 순간 몰림",
+                  "state": "waiting"
+                }
+              ]
+            },
+            {
+              "step": "code",
+              "name": "3 코드 품질",
+              "state": "waiting",
+              "items": [
+                {
+                  "key": "code-1",
+                  "title": "하드코딩된 비밀값",
+                  "state": "waiting"
+                },
+                {
+                  "key": "code-2",
+                  "title": "예외 처리",
+                  "state": "waiting"
+                },
+                {
+                  "key": "code-3",
+                  "title": "SQL 문자열 연결",
+                  "state": "waiting"
+                }
+              ]
+            },
+            {
+              "step": "report",
+              "name": "결과 정리",
+              "state": "waiting",
+              "items": []
+            }
+          ],
+          "logs": [
+            {
+              "ts": "2026-11-07T14:39:10+09:00",
+              "tag": "k6",
+              "text": "http_req_duration p(95)=487ms · vus=50"
+            },
+            {
+              "ts": "2026-11-07T14:39:11+09:00",
+              "tag": "db",
+              "text": "GET /api/orders sql.count=1240/req"
+            },
+            {
+              "ts": "2026-11-07T14:40:31+09:00",
+              "tag": "k6",
+              "text": "vus=120 · http_req_duration p(95)=2.1s"
+            }
+          ]
+        },
+        "404": {
+          "code": "NOT_FOUND",
+          "message": "찾을 수 없어요"
+        }
+      }
+    },
+    "POST /api/runs/{id}/stop": {
+      "summary": "5 중단 (ESC · 오류 팝업 \"중단\")",
+      "owner": [
+        "B3"
+      ],
+      "responses": {
+        "200 running": {
+          "status": "running"
+        },
+        "200 stopped": {
+          "status": "stopped"
+        },
+        "404": {
+          "code": "NOT_FOUND",
+          "message": "찾을 수 없어요"
+        }
+      }
+    },
+    "POST /api/runs/{id}/retry": {
+      "summary": "5 오류 팝업 \"다시 시도\" — 멈춘 항목부터",
+      "owner": [
+        "B3"
+      ],
+      "responses": {
+        "200": {
+          "status": "running"
+        },
+        "404": {
+          "code": "NOT_FOUND",
+          "message": "찾을 수 없어요"
+        }
+      }
+    },
+    "POST /api/runs/{id}/finish-partial": {
+      "summary": "5 오류 팝업 \"여기까지 결과 보기\" — 일부 완료",
+      "owner": [
+        "B3"
+      ],
+      "responses": {
+        "200 running": {
+          "status": "running"
+        },
+        "200 partial": {
+          "status": "partial"
+        },
+        "404": {
+          "code": "NOT_FOUND",
+          "message": "찾을 수 없어요"
+        }
+      }
+    },
+    "GET /api/runs/{id}/logs": {
+      "summary": "도구 원문 로그 (5 \"전체 로그\" · 7 관측 근거)",
+      "owner": [
+        "B3"
+      ],
+      "responses": {
+        "200": "### k6\n== perf-1 GET /api/orders · exit=0\nrunning (1m00.0s), 000/200 VUs, 12000 complete and 0 interrupted iterations\nhttp_req_duration..............: avg=212.4ms p(95)=487.2ms\n### auth\n== sec-3 · 권한 점검\n[auth] 로그인 없이 관리자 GET /api/admin/users · 200 → 뚫림\n### semgrep\n== code-1,code-2 · exit=1\nRan 113 rules on 14 files: 3 findings.\n",
+        "404": {
+          "code": "NOT_FOUND",
+          "message": "찾을 수 없어요"
+        }
+      }
+    }
+  }
+}

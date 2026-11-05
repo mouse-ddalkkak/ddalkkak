@@ -1,0 +1,136 @@
+{
+  "screen": "0-3 온보딩 · 스타터킷",
+  "source": "docs/openapi.yaml ④ 예시에서 뽑음 · 고칠 때는 openapi.yaml을 고치고 python scripts/screen_contracts.py",
+  "calls": {
+    "GET /api/services/requests": {
+      "summary": "0-3 연결 요청 카드 (5초마다)",
+      "owner": [
+        "B2"
+      ],
+      "responses": {
+        "200": [
+          {
+            "id": "req_7f2a",
+            "appName": "order-api",
+            "framework": "Spring Boot",
+            "frameworkVersion": "3.2.5",
+            "host": "localhost",
+            "port": 8080,
+            "pid": 41822,
+            "javaVersion": "17",
+            "buildTool": "Gradle",
+            "requestedAt": "2026-10-31T10:02:11+09:00"
+          }
+        ]
+      }
+    },
+    "POST /api/services/requests/{id}/approve": {
+      "summary": "0-3 이 서비스 연결 허용",
+      "owner": [
+        "B2"
+      ],
+      "responses": {
+        "200": {
+          "serviceId": "svc_1",
+          "name": "order-api"
+        },
+        "404": {
+          "code": "NOT_FOUND",
+          "message": "찾을 수 없어요"
+        },
+        "409": {
+          "code": "ALREADY_CONNECTED",
+          "message": "이미 연결된 서비스가 있어요"
+        }
+      }
+    },
+    "POST /api/services/requests/{id}/ignore": {
+      "summary": "0-3 아니에요 — 무시 (저장 안 함)",
+      "owner": [
+        "B2"
+      ],
+      "responses": {
+        "204": null,
+        "404": {
+          "code": "NOT_FOUND",
+          "message": "찾을 수 없어요"
+        }
+      }
+    },
+    "GET /api/ai-settings": {
+      "summary": "AI 설정 (헤더 \"AI 연결됨 / AI 없음\" · 팝업 초깃값)",
+      "owner": [
+        "B2"
+      ],
+      "responses": {
+        "200": {
+          "provider": "claude",
+          "baseUrl": null,
+          "model": "claude-sonnet-5-5",
+          "keyMasked": "sk-…7f2a",
+          "connected": true
+        },
+        "200 none": {
+          "provider": null,
+          "baseUrl": null,
+          "model": null,
+          "keyMasked": null,
+          "connected": false
+        }
+      }
+    },
+    "PUT /api/ai-settings": {
+      "summary": "AI 설정 저장 — 연결 확인이 성공한 값",
+      "owner": [
+        "B2"
+      ],
+      "request": {
+        "provider": "claude",
+        "baseUrl": null,
+        "key": "sk-ant-xxxx7f2a",
+        "model": "claude-sonnet-5-5"
+      },
+      "responses": {
+        "200": {
+          "provider": "claude",
+          "baseUrl": null,
+          "model": "claude-sonnet-5-5",
+          "keyMasked": "sk-…7f2a",
+          "connected": true
+        },
+        "400": {
+          "code": "INVALID_URL",
+          "message": "주소를 확인해 주세요 · http(s)://…"
+        }
+      }
+    },
+    "POST /api/ai-settings/check": {
+      "summary": "AI 연결 확인 → /ai/check",
+      "owner": [
+        "B2"
+      ],
+      "request": {
+        "provider": "claude",
+        "baseUrl": null,
+        "key": "sk-ant-xxxx7f2a",
+        "model": "claude-sonnet-5-5"
+      },
+      "responses": {
+        "200 ok": {
+          "ok": true,
+          "shown": "Claude · 기본 모델",
+          "message": "연결됐어요 · 키는 이 서버에만 저장돼요"
+        },
+        "200 keyShort": {
+          "ok": false,
+          "shown": null,
+          "message": "키가 너무 짧아요 · 다시 확인해 주세요"
+        },
+        "400": {
+          "code": "INVALID_URL",
+          "message": "주소를 확인해 주세요 · http(s)://…"
+        }
+      }
+    }
+  }
+}

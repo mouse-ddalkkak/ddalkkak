@@ -1,0 +1,6 @@
+.wrap{appearance:none;margin:0;padding:0;border:0;background:transparent;display:flex;align-items:center;gap:14px;cursor:pointer;align-self:flex-start;text-align:left}
+.box{width:28px;height:28px;flex:none;border:4px solid var(--ink-50);background:var(--ink-900);padding:4px;display:block}
+.muted{border-color:var(--ink-400)}
+.fill{display:block;width:100%;height:100%;background:transparent}
+.fill[data-on]{background:var(--cyan-300)}
+.label{font:var(--type-body);letter-spacing:2px;color:var(--white)}

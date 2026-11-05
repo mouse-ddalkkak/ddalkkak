@@ -1,0 +1,6 @@
+# JitPack 이 공개 저장소(github.com/mouse-ddalkkak/ddalkkak)의 v* 태그로 스타터킷을 빌드한다 (S15P31A107-185, docs/starter-kit.md §6)
+# 스타터킷이 하위 폴더라 그 폴더에서 빌드한다. $VERSION = 태그 이름 (v1.0.0)
+jdk:
+  - openjdk21
+install:
+  - cd starter-kit && ./gradlew publishToMavenLocal -PreleaseVersion=$VERSION

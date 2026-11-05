@@ -1,0 +1,102 @@
+/* Pixel Space 토큰 — Pixel Flow 디자인 패키지(web/design/source/tokens)에서 옮김. 색 · 간격은 여기 변수만 쓴다 */
+:root{
+  /* base · space ink */
+  --ink-900:#1c1c24;--ink-800:#2c2c38;--ink-700:#3b3a55;--ink-600:#55586a;--ink-400:#8f93a8;--ink-300:#c9cbd6;--ink-100:#e6ecf7;--ink-50:#f4f4f4;--white:#ffffff;
+  /* base · brand */
+  --band-500:#3f6298;--magenta-500:#b45ca6;--cyan-100:#d9fffa;--cyan-300:#a8f0e8;--cyan-500:#6fd8cc;--red-500:#e8403a;--red-600:#e8302a;--cream-100:#fffaf0;--cream-300:#ece2d2;
+  /* base · status */
+  --coral-400:#ff5a50;--amber-400:#f2b83a;--green-400:#6fd06a;
+
+  /* semantic · surfaces */
+  --bg-space:var(--ink-900);--surface-panel:rgba(28,28,36,.96);--surface-band:var(--band-500);--surface-ground:var(--ink-700);--surface-key:var(--ink-900);--surface-gauge-empty:var(--ink-800);--surface-pill-top:var(--cream-100);--surface-pill-bottom:var(--cream-300);--surface-overlay:rgba(28,28,36,.82);
+  /* semantic · text */
+  --text-primary:var(--white);--text-body:var(--ink-50);--text-idle:var(--ink-300);--text-muted:var(--ink-400);--text-disabled:var(--ink-600);--text-accent:var(--cyan-300);--text-on-band:var(--ink-100);--text-digit:var(--red-600);
+  /* semantic · lines */
+  --border-panel:var(--band-500);--border-strong:var(--ink-50);--border-divider:var(--ink-700);--border-ink:var(--ink-900);
+  /* semantic · accents */
+  --accent-frame:var(--magenta-500);--accent-rivet:var(--cyan-300);--accent-rivet-inner:var(--cyan-500);--accent-sparkle-core:var(--cyan-100);--accent-cursor:var(--red-500);
+  /* semantic · status */
+  --status-danger:var(--coral-400);--status-warning:var(--amber-400);--status-success:var(--green-400);--status-info:var(--cyan-300);--status-score:var(--amber-400);
+}
+
+:root{
+  --border-w:4px;--border-w-frame:12px;--border-dotted:4px dotted var(--border-divider);
+  --radius-none:0;--radius-frame:22px;--radius-pill:999px;--radius-round:50%;
+  --shadow-hard:4px 4px 0 var(--ink-900);--text-shadow-hard:3px 3px 0 var(--ink-900);
+  --shadow-coin:inset -6px -6px 0 rgba(0,0,0,.25),inset 5px 5px 0 rgba(255,255,255,.35);
+  --shadow-rivet:inset 0 0 0 4px var(--cyan-500);--shadow-sparkle:0 0 0 3px rgba(168,240,232,.28);
+  --rivet-size:16px;--coin-size:56px;--logo-size:64px;
+  --bg-starfield:radial-gradient(rgba(255,255,255,.5) 1px,transparent 1.6px),radial-gradient(rgba(143,147,168,.4) 1px,transparent 1.6px);
+  --bg-starfield-size:131px 113px,197px 173px;
+  --bg-starfield-pos:0 0,61px 83px;
+  --bg-band-dots:radial-gradient(rgba(255,255,255,.4) 1.2px,transparent 1.9px);
+  --bg-band-dots-size:113px 79px;
+  --bg-band-dots-pos:11px 7px;
+  --clip-arrow:polygon(0 0,25% 0,25% 14%,50% 14%,50% 28%,75% 28%,75% 42%,100% 42%,100% 58%,75% 58%,75% 72%,50% 72%,50% 86%,25% 86%,25% 100%,0 100%);
+  --clip-band-top-ground:polygon(0 0,100% 0,100% 65%,98% 65%,98% 77%,94% 77%,94% 68%,92% 68%,92% 91%,87% 91%,87% 79%,81% 79%,81% 69%,74% 69%,74% 71%,66% 71%,66% 93%,60% 93%,60% 80%,55% 80%,55% 84%,49% 84%,49% 77%,47% 77%,47% 89%,41% 89%,41% 76%,36% 76%,36% 60%,31% 60%,31% 85%,28% 85%,28% 67%,23% 67%,23% 82%,18% 82%,18% 79%,13% 79%,13% 87%,10% 87%,10% 78%,5% 78%,5% 66%,2% 66%,2% 93%,0 93%);
+  --clip-band-top-sky:polygon(0 0,100% 0,100% 43%,97% 43%,97% 31%,93% 31%,93% 15%,88% 15%,88% 18%,82% 18%,82% 13%,79% 13%,79% 25%,77% 25%,77% 39%,75% 39%,75% 42%,70% 42%,70% 24%,67% 24%,67% 23%,63% 23%,63% 19%,58% 19%,58% 24%,52% 24%,52% 35%,48% 35%,48% 29%,43% 29%,43% 33%,38% 33%,38% 26%,32% 26%,32% 18%,28% 18%,28% 29%,25% 29%,25% 25%,22% 25%,22% 20%,18% 20%,18% 16%,14% 16%,14% 43%,9% 43%,9% 22%,6% 22%,6% 12%,0 12%);
+  --clip-band-bottom-ground:polygon(0 100%,100% 100%,100% 40%,96% 40%,96% 37%,90% 37%,90% 7%,84% 7%,84% 31%,81% 31%,81% 39%,79% 39%,79% 7%,75% 7%,75% 32%,70% 32%,70% 34%,68% 34%,68% 26%,65% 26%,65% 14%,62% 14%,62% 30%,58% 30%,58% 41%,55% 41%,55% 38%,53% 38%,53% 39%,46% 39%,46% 24%,44% 24%,44% 38%,41% 38%,41% 14%,35% 14%,35% 15%,30% 15%,30% 24%,25% 24%,25% 14%,21% 14%,21% 6%,19% 6%,19% 15%,17% 15%,17% 16%,12% 16%,12% 39%,6% 39%,6% 38%,0 38%);
+  --clip-band-bottom-sky:polygon(0 100%,100% 100%,100% 74%,97% 74%,97% 57%,92% 57%,92% 68%,87% 68%,87% 73%,83% 73%,83% 74%,78% 74%,78% 62%,70% 62%,70% 88%,65% 88%,65% 75%,61% 75%,61% 61%,56% 61%,56% 63%,50% 63%,50% 86%,45% 86%,45% 90%,39% 90%,39% 67%,36% 67%,36% 70%,31% 70%,31% 67%,26% 67%,26% 77%,23% 77%,23% 75%,17% 75%,17% 70%,8% 70%,8% 81%,5% 81%,5% 70%,0 70%);
+  --clip-band-top-sky-fine:polygon(0 0,100% 0,100% 28.13%,98% 28.13%,98% 18.75%,96% 18.75%,96% 18.75%,94% 18.75%,94% 18.75%,92% 18.75%,92% 28.13%,90% 28.13%,90% 18.75%,88% 18.75%,88% 18.75%,86% 18.75%,86% 28.13%,84% 28.13%,84% 28.13%,82% 28.13%,82% 18.75%,80% 18.75%,80% 18.75%,78% 18.75%,78% 18.75%,76% 18.75%,76% 28.13%,74% 28.13%,74% 37.5%,72% 37.5%,72% 37.5%,70% 37.5%,70% 37.5%,68% 37.5%,68% 37.5%,66% 37.5%,66% 37.5%,64% 37.5%,64% 37.5%,62% 37.5%,62% 28.13%,60% 28.13%,60% 28.13%,58% 28.13%,58% 28.13%,56% 28.13%,56% 28.13%,54% 28.13%,54% 28.13%,52% 28.13%,52% 28.13%,50% 28.13%,50% 28.13%,48% 28.13%,48% 28.13%,46% 28.13%,46% 28.13%,44% 28.13%,44% 18.75%,42% 18.75%,42% 18.75%,40% 18.75%,40% 18.75%,38% 18.75%,38% 18.75%,36% 18.75%,36% 18.75%,34% 18.75%,34% 18.75%,32% 18.75%,32% 28.13%,30% 28.13%,30% 28.13%,28% 28.13%,28% 37.5%,26% 37.5%,26% 28.13%,24% 28.13%,24% 28.13%,22% 28.13%,22% 28.13%,20% 28.13%,20% 37.5%,18% 37.5%,18% 28.13%,16% 28.13%,16% 28.13%,14% 28.13%,14% 37.5%,12% 37.5%,12% 37.5%,10% 37.5%,10% 46.88%,8% 46.88%,8% 37.5%,6% 37.5%,6% 28.13%,4% 28.13%,4% 28.13%,2% 28.13%,2% 28.13%,0% 28.13%);
+  --clip-band-top-ground-fine:polygon(0 0,100% 0,100% 65.63%,98% 65.63%,98% 56.25%,96% 56.25%,96% 56.25%,94% 56.25%,94% 56.25%,92% 56.25%,92% 65.63%,90% 65.63%,90% 46.88%,88% 46.88%,88% 46.88%,86% 46.88%,86% 65.63%,84% 65.63%,84% 65.63%,82% 65.63%,82% 56.25%,80% 56.25%,80% 65.63%,78% 65.63%,78% 65.63%,76% 65.63%,76% 84.38%,74% 84.38%,74% 84.38%,72% 84.38%,72% 84.38%,70% 84.38%,70% 84.38%,68% 84.38%,68% 84.38%,66% 84.38%,66% 84.38%,64% 84.38%,64% 84.38%,62% 84.38%,62% 75%,60% 75%,60% 75%,58% 75%,58% 75%,56% 75%,56% 75%,54% 75%,54% 65.63%,52% 65.63%,52% 65.63%,50% 65.63%,50% 65.63%,48% 65.63%,48% 65.63%,46% 65.63%,46% 56.25%,44% 56.25%,44% 46.88%,42% 46.88%,42% 56.25%,40% 56.25%,40% 56.25%,38% 56.25%,38% 65.63%,36% 65.63%,36% 56.25%,34% 56.25%,34% 56.25%,32% 56.25%,32% 75%,30% 75%,30% 75%,28% 75%,28% 75%,26% 75%,26% 65.63%,24% 65.63%,24% 75%,22% 75%,22% 75%,20% 75%,20% 90.63%,18% 90.63%,18% 84.38%,16% 84.38%,16% 75%,14% 75%,14% 90.63%,12% 90.63%,12% 84.38%,10% 84.38%,10% 90.63%,8% 90.63%,8% 75%,6% 75%,6% 65.63%,4% 65.63%,4% 65.63%,2% 65.63%,2% 65.63%,0% 65.63%);
+  --clip-band-bottom-sky-fine:polygon(0 100%,100% 100%,100% 71.88%,98% 71.88%,98% 71.88%,96% 71.88%,96% 71.88%,94% 71.88%,94% 81.25%,92% 81.25%,92% 71.88%,90% 71.88%,90% 71.88%,88% 71.88%,88% 62.5%,86% 62.5%,86% 62.5%,84% 62.5%,84% 62.5%,82% 62.5%,82% 62.5%,80% 62.5%,80% 53.13%,78% 53.13%,78% 62.5%,76% 62.5%,76% 71.88%,74% 71.88%,74% 71.88%,72% 71.88%,72% 71.88%,70% 71.88%,70% 71.88%,68% 71.88%,68% 71.88%,66% 71.88%,66% 81.25%,64% 81.25%,64% 71.88%,62% 71.88%,62% 71.88%,60% 71.88%,60% 71.88%,58% 71.88%,58% 81.25%,56% 81.25%,56% 81.25%,54% 81.25%,54% 81.25%,52% 81.25%,52% 81.25%,50% 81.25%,50% 81.25%,48% 81.25%,48% 81.25%,46% 81.25%,46% 71.88%,44% 71.88%,44% 62.5%,42% 62.5%,42% 62.5%,40% 62.5%,40% 62.5%,38% 62.5%,38% 62.5%,36% 62.5%,36% 62.5%,34% 62.5%,34% 62.5%,32% 62.5%,32% 71.88%,30% 71.88%,30% 71.88%,28% 71.88%,28% 71.88%,26% 71.88%,26% 62.5%,24% 62.5%,24% 62.5%,22% 62.5%,22% 62.5%,20% 62.5%,20% 71.88%,18% 71.88%,18% 71.88%,16% 71.88%,16% 81.25%,14% 81.25%,14% 81.25%,12% 81.25%,12% 90.63%,10% 90.63%,10% 90.63%,8% 90.63%,8% 81.25%,6% 81.25%,6% 71.88%,4% 71.88%,4% 71.88%,2% 71.88%,2% 71.88%,0% 71.88%);
+  --clip-band-bottom-ground-fine:polygon(0 100%,100% 100%,100% 34.38%,98% 34.38%,98% 34.38%,96% 34.38%,96% 25%,94% 25%,94% 34.38%,92% 34.38%,92% 15.63%,90% 15.63%,90% 25%,88% 25%,88% 15.63%,86% 15.63%,86% 15.63%,84% 15.63%,84% 15.63%,82% 15.63%,82% 15.63%,80% 15.63%,80% 9.38%,78% 9.38%,78% 15.63%,76% 15.63%,76% 25%,74% 25%,74% 25%,72% 25%,72% 25%,70% 25%,70% 25%,68% 25%,68% 34.38%,66% 34.38%,66% 43.75%,64% 43.75%,64% 34.38%,62% 34.38%,62% 43.75%,60% 43.75%,60% 43.75%,58% 43.75%,58% 43.75%,56% 43.75%,56% 43.75%,54% 43.75%,54% 43.75%,52% 43.75%,52% 43.75%,50% 43.75%,50% 43.75%,48% 43.75%,48% 34.38%,46% 34.38%,46% 25%,44% 25%,44% 25%,42% 25%,42% 25%,40% 25%,40% 15.63%,38% 15.63%,38% 15.63%,36% 15.63%,36% 15.63%,34% 15.63%,34% 15.63%,32% 15.63%,32% 15.63%,30% 15.63%,30% 15.63%,28% 15.63%,28% 25%,26% 25%,26% 15.63%,24% 15.63%,24% 25%,22% 25%,22% 25%,20% 25%,20% 34.38%,18% 34.38%,18% 34.38%,16% 34.38%,16% 43.75%,14% 43.75%,14% 43.75%,12% 43.75%,12% 43.75%,10% 43.75%,10% 43.75%,8% 43.75%,8% 43.75%,6% 43.75%,6% 43.75%,4% 43.75%,4% 43.75%,2% 43.75%,2% 34.38%,0% 34.38%);
+}
+
+:root{
+  --space-1:4px;--space-2:6px;--space-3:8px;--space-4:10px;--space-5:12px;--space-6:14px;--space-7:16px;--space-8:18px;--space-9:20px;--space-10:22px;--space-11:26px;--space-12:28px;--space-13:40px;--space-14:44px;--space-15:48px;--space-16:56px;--space-17:64px;
+  --pad-panel:28px;--pad-page-x:40px;--page-max:1680px;--gap-columns:48px;--band-h:64px;
+}
+
+:root{
+  --font-display:'Galmuri11',ui-monospace,monospace;
+  --font-body:'Galmuri14','Galmuri11',ui-monospace,monospace;
+  --weight-regular:400;--weight-bold:700;
+  --size-caption:15px;--size-body:24px;--size-title:36px;--size-display:48px;--size-hero:clamp(96px,10vw,144px);
+  --leading-none:1;--leading-body:1.4;--leading-caption:1.5;
+  --tracking-1:1px;--tracking-2:2px;--tracking-3:3px;--tracking-4:4px;--tracking-menu:.3em;--tracking-hero:.35em;
+
+  /* semantic · font shorthands (use with font: var(--type-*)) */
+  --type-hero:400 var(--size-hero)/1 var(--font-display);
+  --type-menu:400 var(--size-display)/1 var(--font-display);
+  --type-score:700 var(--size-display)/1 var(--font-display);
+  --type-logo:700 var(--size-title)/1 var(--font-display);
+  --type-digit:700 var(--size-title)/1 var(--font-display);
+  --type-label:700 var(--size-body)/1 var(--font-display);
+  --type-body:400 var(--size-body)/1 var(--font-display);
+  --type-small:700 var(--size-caption)/1 var(--font-display);
+  --type-caption:400 var(--size-caption)/1.5 var(--font-body);
+}
+
+:root{
+  --ease-pixel:steps(1);--dur-blink:1s;--dur-blink-led:1.4s;--dur-walk:.72s;--dur-run:14s;--dur-sway:.6s;--press-offset:4px;
+}
+@keyframes ttk-blink{0%,55%{opacity:1}56%,100%{opacity:0}}
+@keyframes ttk-fly{0%{top:110%}55%{top:-45%}100%{top:-45%}}
+@keyframes ttk-sway{0%,100%{transform:translateX(-5px)}50%{transform:translateX(5px)}}
+@keyframes ttk-run{0%{left:-160px}62%{left:calc(100% + 60px)}100%{left:calc(100% + 60px)}}
+@keyframes ttk-walk{from{background-position:0 0}to{background-position:133.333% 0}}
+@keyframes ttk-pop{from{transform:translateY(12px);opacity:0}to{transform:none;opacity:1}}
+
+/* Pixel scrollbar — square, 4px frames, band-blue thumb with hard bevel */
+::-webkit-scrollbar{width:20px;height:20px}
+::-webkit-scrollbar-track{background:var(--ink-900);border:4px solid var(--ink-700)}
+::-webkit-scrollbar-thumb{min-height:44px;min-width:44px;background:var(--band-500);border:4px solid var(--ink-900);box-shadow:inset -4px -4px 0 rgba(0,0,0,.28),inset 4px 4px 0 rgba(255,255,255,.2)}
+::-webkit-scrollbar-thumb:hover{background:var(--cyan-500)}
+::-webkit-scrollbar-thumb:active{background:var(--cyan-300);box-shadow:inset 4px 4px 0 rgba(0,0,0,.28)}
+::-webkit-scrollbar-corner{background:var(--ink-900)}
+::-webkit-scrollbar-button{display:none;width:0;height:0}
+@supports not selector(::-webkit-scrollbar){*{scrollbar-color:var(--band-500) var(--ink-900);scrollbar-width:auto}}
+
+/* Pixel Flow 마크업에만 있던 값 (-121에서 토큰으로 올림) */
+:root{
+  --shadow-button:4px 4px 0 #6b6b7e;--shadow-button-big:6px 6px 0 var(--magenta-500);
+  --tab-on-bg:#2f4d7c;--chip-on-border:#2a4470;--ink-chip:rgba(28,28,37,.43);
+  --page-content:1480px;--header-h:80px;
+  --card-on-bg:rgba(168,240,232,.08);--shadow-hero:8px 8px 0 #414141;
+  --star-glow:rgba(230,236,247,.9);--star-inner:rgba(230,236,247,.55);--glow-dim:rgba(255,255,255,.35);
+}
+@keyframes ttk-spin{from{transform:translate(-50%,-50%) rotate(0deg)}to{transform:translate(-50%,-50%) rotate(360deg)}}
+@keyframes ttk-twinkle{0%,100%{opacity:.95;transform:scale(1)}50%{opacity:.25;transform:scale(.7)}}
+@keyframes ttk-starfall{from{transform:translateY(0)}to{transform:translateY(-1200px)}}
+@keyframes ttk-drop{from{max-height:0;opacity:0;transform:translateY(-16px)}to{max-height:1200px;opacity:1;transform:none}}

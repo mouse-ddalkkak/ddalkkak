@@ -1,0 +1,794 @@
+{
+  "screen": "4 검사 범위 선택",
+  "source": "docs/openapi.yaml ④ 예시에서 뽑음 · 고칠 때는 openapi.yaml을 고치고 python scripts/screen_contracts.py",
+  "calls": {
+    "GET /api/runs/prepare/{id}/scope": {
+      "summary": "4 검사 범위 카드 · 예상치",
+      "owner": [
+        "B2"
+      ],
+      "responses": {
+        "200": {
+          "parts": [
+            {
+              "area": "perf",
+              "on": true,
+              "offReason": null,
+              "items": [
+                {
+                  "key": "perf-1",
+                  "area": "perf",
+                  "tool": "k6",
+                  "title": "주문 목록 피크",
+                  "api": "GET /api/orders",
+                  "why": "가장 많이 호출되는 API · 1,820번",
+                  "params": {
+                    "usersFrom": 50,
+                    "usersTo": 200,
+                    "durationMin": 3,
+                    "shape": "ramp",
+                    "failP95Ms": 500,
+                    "failErrorRate": 0.01
+                  },
+                  "recommended": true,
+                  "excluded": false,
+                  "reused": false,
+                  "included": true,
+                  "source": "llm",
+                  "aiParams": {
+                    "usersFrom": 50,
+                    "usersTo": 200,
+                    "durationMin": 3,
+                    "shape": "ramp",
+                    "failP95Ms": 500,
+                    "failErrorRate": 0.01
+                  }
+                },
+                {
+                  "key": "perf-2",
+                  "area": "perf",
+                  "tool": "k6",
+                  "title": "주문 상세 피크",
+                  "api": "GET /api/orders/{id}",
+                  "why": "두 번째로 많이 호출되는 GET이에요",
+                  "params": {
+                    "usersFrom": 20,
+                    "usersTo": 100,
+                    "durationMin": 3,
+                    "shape": "step",
+                    "failP95Ms": 800,
+                    "failErrorRate": 0.01
+                  },
+                  "recommended": true,
+                  "excluded": false,
+                  "reused": false,
+                  "included": true,
+                  "source": "llm",
+                  "aiParams": {
+                    "usersFrom": 20,
+                    "usersTo": 100,
+                    "durationMin": 3,
+                    "shape": "step",
+                    "failP95Ms": 800,
+                    "failErrorRate": 0.01
+                  }
+                },
+                {
+                  "key": "perf-3",
+                  "area": "perf",
+                  "tool": "k6",
+                  "title": "주문 목록 순간 몰림",
+                  "api": "GET /api/orders",
+                  "why": "같은 순간 사람이 몰리면 DB 연결이 모자랄 수 있어요",
+                  "params": {
+                    "usersFrom": 10,
+                    "usersTo": 200,
+                    "durationMin": 1,
+                    "shape": "spike",
+                    "failP95Ms": 1000,
+                    "failErrorRate": 0.01
+                  },
+                  "recommended": true,
+                  "excluded": false,
+                  "reused": false,
+                  "included": true,
+                  "source": "llm",
+                  "aiParams": {
+                    "usersFrom": 10,
+                    "usersTo": 200,
+                    "durationMin": 1,
+                    "shape": "spike",
+                    "failP95Ms": 1000,
+                    "failErrorRate": 0.01
+                  }
+                },
+                {
+                  "key": "perf-4",
+                  "area": "perf",
+                  "tool": "k6",
+                  "title": "상품 검색 대량",
+                  "api": "GET /api/products",
+                  "why": "응답이 캐시돼 부하 효과가 적어요",
+                  "params": {
+                    "usersFrom": 50,
+                    "usersTo": 200,
+                    "durationMin": 3,
+                    "shape": "ramp",
+                    "failP95Ms": 500,
+                    "failErrorRate": 0.01
+                  },
+                  "recommended": false,
+                  "excluded": true,
+                  "excludeReason": "캐시됨",
+                  "reused": false,
+                  "included": false,
+                  "source": "llm",
+                  "aiParams": {
+                    "usersFrom": 50,
+                    "usersTo": 200,
+                    "durationMin": 3,
+                    "shape": "ramp",
+                    "failP95Ms": 500,
+                    "failErrorRate": 0.01
+                  }
+                }
+              ]
+            },
+            {
+              "area": "sec",
+              "on": true,
+              "offReason": null,
+              "items": [
+                {
+                  "key": "sec-1",
+                  "area": "sec",
+                  "tool": "ddalkkak",
+                  "title": "테스트 계정 만들기",
+                  "api": "POST /api/users",
+                  "why": "로그인이 필요한 API를 검사하려면 계정이 있어야 해요",
+                  "params": {
+                    "count": 1
+                  },
+                  "recommended": true,
+                  "excluded": false,
+                  "reused": false,
+                  "included": true,
+                  "source": "llm",
+                  "aiParams": {
+                    "count": 1
+                  }
+                },
+                {
+                  "key": "sec-2",
+                  "area": "sec",
+                  "tool": "zap",
+                  "title": "입력값 인젝션",
+                  "api": "GET /api/orders",
+                  "why": "검색어가 쿼리에 들어가는 API예요",
+                  "params": {
+                    "range": "wide"
+                  },
+                  "recommended": true,
+                  "excluded": false,
+                  "reused": false,
+                  "included": true,
+                  "source": "llm",
+                  "aiParams": {
+                    "range": "wide"
+                  }
+                },
+                {
+                  "key": "sec-3",
+                  "area": "sec",
+                  "tool": "ddalkkak",
+                  "title": "남의 주문 보기",
+                  "api": "GET /api/orders/{id}",
+                  "why": "id만으로 조회하는 API예요",
+                  "params": {
+                    "idCount": 20
+                  },
+                  "recommended": true,
+                  "excluded": false,
+                  "reused": false,
+                  "included": true,
+                  "source": "llm",
+                  "aiParams": {
+                    "idCount": 20
+                  }
+                },
+                {
+                  "key": "sec-4",
+                  "area": "sec",
+                  "tool": "zap",
+                  "title": "관리자 API 비로그인",
+                  "api": "GET /api/admin/*",
+                  "why": "관리자 API 6개가 로그인 없이 열려 있는지 봐요",
+                  "params": {
+                    "range": "default"
+                  },
+                  "recommended": true,
+                  "excluded": false,
+                  "reused": false,
+                  "included": true,
+                  "source": "llm",
+                  "aiParams": {
+                    "range": "default"
+                  }
+                },
+                {
+                  "key": "sec-5",
+                  "area": "sec",
+                  "tool": "zap",
+                  "title": "남의 주문 취소",
+                  "api": "POST /api/orders/{id}/cancel",
+                  "why": "다른 사람 주문을 취소할 수 있는지 봐요 · 계정 2개 필요",
+                  "params": {
+                    "range": "default"
+                  },
+                  "recommended": true,
+                  "excluded": false,
+                  "reused": false,
+                  "included": true,
+                  "source": "llm",
+                  "aiParams": {
+                    "range": "default"
+                  }
+                },
+                {
+                  "key": "sec-6",
+                  "area": "sec",
+                  "tool": "zap",
+                  "title": "로그인 무차별 대입",
+                  "api": "POST /api/auth/login",
+                  "why": "비밀번호를 계속 틀려도 막히지 않는지 봐요",
+                  "params": {
+                    "range": "default"
+                  },
+                  "recommended": true,
+                  "excluded": false,
+                  "reused": false,
+                  "included": true,
+                  "source": "default",
+                  "aiParams": {
+                    "range": "default"
+                  }
+                }
+              ]
+            },
+            {
+              "area": "code",
+              "on": true,
+              "offReason": null,
+              "items": [
+                {
+                  "key": "code-1",
+                  "area": "code",
+                  "tool": "semgrep",
+                  "title": "하드코딩된 비밀값",
+                  "target": "전체",
+                  "why": "키·비밀번호가 코드에 박혀 있는지 봐요",
+                  "params": {
+                    "severity": "critical"
+                  },
+                  "recommended": true,
+                  "excluded": false,
+                  "reused": false,
+                  "included": true,
+                  "source": "llm",
+                  "aiParams": {
+                    "severity": "critical"
+                  }
+                },
+                {
+                  "key": "code-2",
+                  "area": "code",
+                  "tool": "semgrep",
+                  "title": "예외 처리",
+                  "target": "전체",
+                  "why": "빈 catch가 장애를 숨겨요",
+                  "params": {
+                    "severity": "major"
+                  },
+                  "recommended": true,
+                  "excluded": false,
+                  "reused": false,
+                  "included": true,
+                  "source": "llm",
+                  "aiParams": {
+                    "severity": "major"
+                  }
+                },
+                {
+                  "key": "code-3",
+                  "area": "code",
+                  "tool": "semgrep",
+                  "title": "SQL 문자열 연결",
+                  "target": "*Repository.java",
+                  "why": "검색어를 SQL에 이어 붙이는 곳을 찾아요",
+                  "params": {
+                    "severity": "major"
+                  },
+                  "recommended": true,
+                  "excluded": false,
+                  "reused": false,
+                  "included": true,
+                  "source": "llm",
+                  "aiParams": {
+                    "severity": "major"
+                  }
+                },
+                {
+                  "key": "code-4",
+                  "area": "code",
+                  "tool": "semgrep",
+                  "title": "로그 형식",
+                  "target": "전체",
+                  "why": "고쳐도 점수에 영향이 적어요",
+                  "params": {
+                    "severity": "all"
+                  },
+                  "recommended": false,
+                  "excluded": true,
+                  "excludeReason": "치명·주요 아님",
+                  "reused": false,
+                  "included": false,
+                  "source": "llm",
+                  "aiParams": {
+                    "severity": "all"
+                  }
+                }
+              ]
+            }
+          ],
+          "estimate": {
+            "scenarioCount": 12,
+            "requests": 63360,
+            "durationMin": 16,
+            "load": "medium",
+            "advice": "개발 서버 권장"
+          }
+        },
+        "404": {
+          "code": "NOT_FOUND",
+          "message": "찾을 수 없어요"
+        }
+      }
+    },
+    "GET /api/runs/prepare/{id}/apis": {
+      "summary": "4 \"+ 추가\" 대상 후보 — 이번 회차 API 목록",
+      "owner": [
+        "B2"
+      ],
+      "responses": {
+        "200": {
+          "apis": [
+            {
+              "api": "GET /api/orders",
+              "change": null
+            },
+            {
+              "api": "GET /api/orders/{id}",
+              "change": null
+            },
+            {
+              "api": "POST /api/orders",
+              "change": "new"
+            }
+          ]
+        },
+        "404": {
+          "code": "NOT_FOUND",
+          "message": "찾을 수 없어요"
+        }
+      }
+    },
+    "PUT /api/runs/prepare/{id}/scope": {
+      "summary": "4 범위 저장 — 켜고 끄기 · 팝업 값 · 직접 추가",
+      "owner": [
+        "B2"
+      ],
+      "request": {
+        "areas": {
+          "perf": true,
+          "sec": true,
+          "code": true
+        },
+        "items": [
+          {
+            "key": "perf-1",
+            "included": true,
+            "params": {
+              "usersFrom": 100,
+              "usersTo": 500,
+              "durationMin": 3,
+              "shape": "ramp",
+              "failP95Ms": 500,
+              "failErrorRate": 0.01
+            }
+          }
+        ],
+        "added": []
+      },
+      "responses": {
+        "200": {
+          "parts": [
+            {
+              "area": "perf",
+              "on": true,
+              "offReason": null,
+              "items": [
+                {
+                  "key": "perf-1",
+                  "area": "perf",
+                  "tool": "k6",
+                  "title": "주문 목록 피크",
+                  "api": "GET /api/orders",
+                  "why": "가장 많이 호출되는 API · 1,820번",
+                  "params": {
+                    "usersFrom": 50,
+                    "usersTo": 200,
+                    "durationMin": 3,
+                    "shape": "ramp",
+                    "failP95Ms": 500,
+                    "failErrorRate": 0.01
+                  },
+                  "recommended": true,
+                  "excluded": false,
+                  "reused": false,
+                  "included": true,
+                  "source": "llm",
+                  "aiParams": {
+                    "usersFrom": 50,
+                    "usersTo": 200,
+                    "durationMin": 3,
+                    "shape": "ramp",
+                    "failP95Ms": 500,
+                    "failErrorRate": 0.01
+                  }
+                },
+                {
+                  "key": "perf-2",
+                  "area": "perf",
+                  "tool": "k6",
+                  "title": "주문 상세 피크",
+                  "api": "GET /api/orders/{id}",
+                  "why": "두 번째로 많이 호출되는 GET이에요",
+                  "params": {
+                    "usersFrom": 20,
+                    "usersTo": 100,
+                    "durationMin": 3,
+                    "shape": "step",
+                    "failP95Ms": 800,
+                    "failErrorRate": 0.01
+                  },
+                  "recommended": true,
+                  "excluded": false,
+                  "reused": false,
+                  "included": true,
+                  "source": "llm",
+                  "aiParams": {
+                    "usersFrom": 20,
+                    "usersTo": 100,
+                    "durationMin": 3,
+                    "shape": "step",
+                    "failP95Ms": 800,
+                    "failErrorRate": 0.01
+                  }
+                },
+                {
+                  "key": "perf-3",
+                  "area": "perf",
+                  "tool": "k6",
+                  "title": "주문 목록 순간 몰림",
+                  "api": "GET /api/orders",
+                  "why": "같은 순간 사람이 몰리면 DB 연결이 모자랄 수 있어요",
+                  "params": {
+                    "usersFrom": 10,
+                    "usersTo": 200,
+                    "durationMin": 1,
+                    "shape": "spike",
+                    "failP95Ms": 1000,
+                    "failErrorRate": 0.01
+                  },
+                  "recommended": true,
+                  "excluded": false,
+                  "reused": false,
+                  "included": true,
+                  "source": "llm",
+                  "aiParams": {
+                    "usersFrom": 10,
+                    "usersTo": 200,
+                    "durationMin": 1,
+                    "shape": "spike",
+                    "failP95Ms": 1000,
+                    "failErrorRate": 0.01
+                  }
+                },
+                {
+                  "key": "perf-4",
+                  "area": "perf",
+                  "tool": "k6",
+                  "title": "상품 검색 대량",
+                  "api": "GET /api/products",
+                  "why": "응답이 캐시돼 부하 효과가 적어요",
+                  "params": {
+                    "usersFrom": 50,
+                    "usersTo": 200,
+                    "durationMin": 3,
+                    "shape": "ramp",
+                    "failP95Ms": 500,
+                    "failErrorRate": 0.01
+                  },
+                  "recommended": false,
+                  "excluded": true,
+                  "excludeReason": "캐시됨",
+                  "reused": false,
+                  "included": false,
+                  "source": "llm",
+                  "aiParams": {
+                    "usersFrom": 50,
+                    "usersTo": 200,
+                    "durationMin": 3,
+                    "shape": "ramp",
+                    "failP95Ms": 500,
+                    "failErrorRate": 0.01
+                  }
+                }
+              ]
+            },
+            {
+              "area": "sec",
+              "on": true,
+              "offReason": null,
+              "items": [
+                {
+                  "key": "sec-1",
+                  "area": "sec",
+                  "tool": "ddalkkak",
+                  "title": "테스트 계정 만들기",
+                  "api": "POST /api/users",
+                  "why": "로그인이 필요한 API를 검사하려면 계정이 있어야 해요",
+                  "params": {
+                    "count": 1
+                  },
+                  "recommended": true,
+                  "excluded": false,
+                  "reused": false,
+                  "included": true,
+                  "source": "llm",
+                  "aiParams": {
+                    "count": 1
+                  }
+                },
+                {
+                  "key": "sec-2",
+                  "area": "sec",
+                  "tool": "zap",
+                  "title": "입력값 인젝션",
+                  "api": "GET /api/orders",
+                  "why": "검색어가 쿼리에 들어가는 API예요",
+                  "params": {
+                    "range": "wide"
+                  },
+                  "recommended": true,
+                  "excluded": false,
+                  "reused": false,
+                  "included": true,
+                  "source": "llm",
+                  "aiParams": {
+                    "range": "wide"
+                  }
+                },
+                {
+                  "key": "sec-3",
+                  "area": "sec",
+                  "tool": "ddalkkak",
+                  "title": "남의 주문 보기",
+                  "api": "GET /api/orders/{id}",
+                  "why": "id만으로 조회하는 API예요",
+                  "params": {
+                    "idCount": 20
+                  },
+                  "recommended": true,
+                  "excluded": false,
+                  "reused": false,
+                  "included": true,
+                  "source": "llm",
+                  "aiParams": {
+                    "idCount": 20
+                  }
+                },
+                {
+                  "key": "sec-4",
+                  "area": "sec",
+                  "tool": "zap",
+                  "title": "관리자 API 비로그인",
+                  "api": "GET /api/admin/*",
+                  "why": "관리자 API 6개가 로그인 없이 열려 있는지 봐요",
+                  "params": {
+                    "range": "default"
+                  },
+                  "recommended": true,
+                  "excluded": false,
+                  "reused": false,
+                  "included": true,
+                  "source": "llm",
+                  "aiParams": {
+                    "range": "default"
+                  }
+                },
+                {
+                  "key": "sec-5",
+                  "area": "sec",
+                  "tool": "zap",
+                  "title": "남의 주문 취소",
+                  "api": "POST /api/orders/{id}/cancel",
+                  "why": "다른 사람 주문을 취소할 수 있는지 봐요 · 계정 2개 필요",
+                  "params": {
+                    "range": "default"
+                  },
+                  "recommended": true,
+                  "excluded": false,
+                  "reused": false,
+                  "included": true,
+                  "source": "llm",
+                  "aiParams": {
+                    "range": "default"
+                  }
+                },
+                {
+                  "key": "sec-6",
+                  "area": "sec",
+                  "tool": "zap",
+                  "title": "로그인 무차별 대입",
+                  "api": "POST /api/auth/login",
+                  "why": "비밀번호를 계속 틀려도 막히지 않는지 봐요",
+                  "params": {
+                    "range": "default"
+                  },
+                  "recommended": true,
+                  "excluded": false,
+                  "reused": false,
+                  "included": true,
+                  "source": "default",
+                  "aiParams": {
+                    "range": "default"
+                  }
+                }
+              ]
+            },
+            {
+              "area": "code",
+              "on": true,
+              "offReason": null,
+              "items": [
+                {
+                  "key": "code-1",
+                  "area": "code",
+                  "tool": "semgrep",
+                  "title": "하드코딩된 비밀값",
+                  "target": "전체",
+                  "why": "키·비밀번호가 코드에 박혀 있는지 봐요",
+                  "params": {
+                    "severity": "critical"
+                  },
+                  "recommended": true,
+                  "excluded": false,
+                  "reused": false,
+                  "included": true,
+                  "source": "llm",
+                  "aiParams": {
+                    "severity": "critical"
+                  }
+                },
+                {
+                  "key": "code-2",
+                  "area": "code",
+                  "tool": "semgrep",
+                  "title": "예외 처리",
+                  "target": "전체",
+                  "why": "빈 catch가 장애를 숨겨요",
+                  "params": {
+                    "severity": "major"
+                  },
+                  "recommended": true,
+                  "excluded": false,
+                  "reused": false,
+                  "included": true,
+                  "source": "llm",
+                  "aiParams": {
+                    "severity": "major"
+                  }
+                },
+                {
+                  "key": "code-3",
+                  "area": "code",
+                  "tool": "semgrep",
+                  "title": "SQL 문자열 연결",
+                  "target": "*Repository.java",
+                  "why": "검색어를 SQL에 이어 붙이는 곳을 찾아요",
+                  "params": {
+                    "severity": "major"
+                  },
+                  "recommended": true,
+                  "excluded": false,
+                  "reused": false,
+                  "included": true,
+                  "source": "llm",
+                  "aiParams": {
+                    "severity": "major"
+                  }
+                },
+                {
+                  "key": "code-4",
+                  "area": "code",
+                  "tool": "semgrep",
+                  "title": "로그 형식",
+                  "target": "전체",
+                  "why": "고쳐도 점수에 영향이 적어요",
+                  "params": {
+                    "severity": "all"
+                  },
+                  "recommended": false,
+                  "excluded": true,
+                  "excludeReason": "치명·주요 아님",
+                  "reused": false,
+                  "included": false,
+                  "source": "llm",
+                  "aiParams": {
+                    "severity": "all"
+                  }
+                }
+              ]
+            }
+          ],
+          "estimate": {
+            "scenarioCount": 12,
+            "requests": 63360,
+            "durationMin": 16,
+            "load": "medium",
+            "advice": "개발 서버 권장"
+          }
+        },
+        "400 none": {
+          "code": "NO_ITEMS",
+          "message": "항목을 하나 이상 골라 주세요"
+        },
+        "400 range": {
+          "code": "INVALID_RANGE",
+          "message": "시작 사람 수가 끝보다 많아요"
+        },
+        "400 target": {
+          "code": "NO_TARGET",
+          "message": "대상 API를 골라 주세요"
+        },
+        "404": {
+          "code": "NOT_FOUND",
+          "message": "찾을 수 없어요"
+        }
+      }
+    },
+    "POST /api/runs": {
+      "summary": "4 \"딸깍\" — 검사 시작",
+      "owner": [
+        "B3"
+      ],
+      "request": {
+        "runId": "run_5"
+      },
+      "responses": {
+        "200": {
+          "runId": "run_5"
+        },
+        "404": {
+          "code": "NOT_FOUND",
+          "message": "찾을 수 없어요"
+        },
+        "409": {
+          "code": "RUN_IN_PROGRESS",
+          "message": "이미 검사 중이에요"
+        }
+      }
+    }
+  }
+}

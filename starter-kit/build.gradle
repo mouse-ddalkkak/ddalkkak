@@ -1,0 +1,87 @@
+plugins {
+	id 'java-library'
+	id 'maven-publish'
+}
+
+group = 'io.ddalkkak'
+// JitPack 은 태그 이름을 넘긴다 (jitpack.yml -PreleaseVersion=v1.0.0 → 1.0.0)
+version = (findProperty('releaseVersion') ?: '0.1.0-SNAPSHOT').replaceFirst('^v', '')
+description = '딸깍 스타터킷 — 고객 앱에 넣는 Spring Boot 자동 설정'
+
+java {
+	toolchain {
+		languageVersion = JavaLanguageVersion.of(21)
+	}
+	withSourcesJar()
+}
+
+// hello 의 starterVersion 이 이 값을 읽는다 (DdalkkakAgent)
+tasks.named('jar') {
+	manifest {
+		attributes 'Implementation-Title': project.name, 'Implementation-Version': project.version
+	}
+}
+
+// 배포: 공개 저장소 태그를 JitPack 이 빌드한다 (docs/starter-kit.md §6)
+publishing {
+	publications {
+		maven(MavenPublication) {
+			from components.java
+			pom {
+				name = 'ddalkkak starter-kit'
+				description = project.description
+				url = 'https://github.com/mouse-ddalkkak/ddalkkak'
+				licenses {
+					license {
+						name = 'Apache-2.0'
+						url = 'https://www.apache.org/licenses/LICENSE-2.0'
+					}
+				}
+			}
+		}
+	}
+}
+
+// 고객 앱이 Java 17 · Spring Boot 3.2 여도 돌게 3.2 API 로 컴파일한다 (docs/starter-kit.md §6)
+tasks.withType(JavaCompile).configureEach {
+	options.release = 17
+	options.compilerArgs << '-parameters'
+}
+
+repositories {
+	mavenCentral()
+}
+
+def compileBoot = '3.2.12'
+// 시험은 두 버전으로: ./gradlew test · ./gradlew test -PbootVersion=4.1.2
+def testBoot = findProperty('bootVersion') ?: compileBoot
+def webStarter = testBoot.startsWith('3.') ? 'spring-boot-starter-web' : 'spring-boot-starter-webmvc'
+
+dependencies {
+	// 고객 앱에 이미 있는 것만 쓰고 끌어오지 않는다
+	compileOnly platform("org.springframework.boot:spring-boot-dependencies:$compileBoot")
+	compileOnly 'org.springframework.boot:spring-boot-autoconfigure'
+	compileOnly 'org.springframework:spring-webmvc'
+	compileOnly 'jakarta.servlet:jakarta.servlet-api'
+	compileOnly 'com.zaxxer:HikariCP'
+	// URL 규칙으로 건 로그인을 읽을 때만 (SecurityRules). 고객 앱에 Spring Security 가 없으면 쓰지 않는다
+	compileOnly 'org.springframework.security:spring-security-web'
+
+	testImplementation platform("org.springframework.boot:spring-boot-dependencies:$testBoot")
+	testImplementation "org.springframework.boot:$webStarter"
+	testImplementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+	testImplementation 'org.springframework.boot:spring-boot-starter-security'
+	testImplementation 'org.springframework.boot:spring-boot-starter-test'
+	testImplementation 'com.h2database:h2'
+	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+tasks.named('test') {
+	useJUnitPlatform()
+	testLogging {
+		showStandardStreams = false
+		events 'failed'
+		exceptionFormat 'full'
+	}
+	systemProperty 'bootVersion', testBoot
+}

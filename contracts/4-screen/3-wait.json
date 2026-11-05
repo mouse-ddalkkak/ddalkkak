@@ -1,0 +1,309 @@
+{
+  "screen": "3 검사 범위 분석 (준비 중)",
+  "source": "docs/openapi.yaml ④ 예시에서 뽑음 · 고칠 때는 openapi.yaml을 고치고 python scripts/screen_contracts.py",
+  "calls": {
+    "POST /api/runs/prepare": {
+      "summary": "3 준비 시작 — 회차 만들기",
+      "owner": [
+        "B2"
+      ],
+      "request": {
+        "codeJobId": "job_3"
+      },
+      "responses": {
+        "200": {
+          "runId": "run_5"
+        },
+        "409 offline": {
+          "code": "SERVICE_OFFLINE",
+          "message": "앱이 꺼져 있어요"
+        },
+        "409 running": {
+          "code": "RUN_IN_PROGRESS",
+          "message": "이미 검사 중이에요"
+        }
+      }
+    },
+    "GET /api/runs/prepare/{id}": {
+      "summary": "3 준비 진행",
+      "owner": [
+        "B2"
+      ],
+      "responses": {
+        "200": {
+          "rows": [
+            {
+              "name": "코드 가져오기",
+              "state": "done",
+              "detail": "GitHub main a3f9c1"
+            },
+            {
+              "name": "API 목록 받기",
+              "state": "done",
+              "detail": "14개 · 지난번보다 +1"
+            },
+            {
+              "name": "시나리오 만들기",
+              "state": "running",
+              "detail": "성능 · 보안 · 코드 품질"
+            }
+          ],
+          "pct": 70,
+          "done": false,
+          "apiCount": 14,
+          "apiDiff": {
+            "added": 1,
+            "removed": 0,
+            "changed": 0,
+            "apis": [
+              {
+                "api": "POST /api/coupons",
+                "change": "new"
+              }
+            ]
+          },
+          "aiMode": "llm",
+          "error": null
+        },
+        "200 done": {
+          "rows": [
+            {
+              "name": "코드 가져오기",
+              "state": "done",
+              "detail": "GitHub main a3f9c1"
+            },
+            {
+              "name": "API 목록 받기",
+              "state": "done",
+              "detail": "14개 · 지난번보다 +1"
+            },
+            {
+              "name": "시나리오 만들기",
+              "state": "done",
+              "detail": "성능 · 보안 · 코드 품질"
+            }
+          ],
+          "pct": 100,
+          "done": true,
+          "apiCount": 14,
+          "apiDiff": {
+            "added": 1,
+            "removed": 0,
+            "changed": 0,
+            "apis": [
+              {
+                "api": "POST /api/coupons",
+                "change": "new"
+              }
+            ]
+          },
+          "aiMode": "llm",
+          "error": null
+        },
+        "200 noAi": {
+          "rows": [
+            {
+              "name": "코드 가져오기",
+              "state": "done",
+              "detail": "GitHub main a3f9c1"
+            },
+            {
+              "name": "API 목록 받기",
+              "state": "done",
+              "detail": "14개 · 지난번보다 +1"
+            },
+            {
+              "name": "시나리오 만들기",
+              "state": "skipped",
+              "detail": "AI 연결 없음 · 기본 범위 사용"
+            }
+          ],
+          "pct": 100,
+          "done": true,
+          "apiCount": 14,
+          "apiDiff": {
+            "added": 1,
+            "removed": 0,
+            "changed": 0,
+            "apis": [
+              {
+                "api": "POST /api/coupons",
+                "change": "new"
+              }
+            ]
+          },
+          "aiMode": "default",
+          "error": null
+        },
+        "200 failed": {
+          "rows": [
+            {
+              "name": "코드 가져오기",
+              "state": "done",
+              "detail": "GitHub main a3f9c1"
+            },
+            {
+              "name": "API 목록 받기",
+              "state": "skipped",
+              "detail": "앱이 꺼져 있어요"
+            },
+            {
+              "name": "시나리오 만들기",
+              "state": "waiting",
+              "detail": "성능 · 보안 · 코드 품질"
+            }
+          ],
+          "pct": 40,
+          "done": true,
+          "apiCount": null,
+          "apiDiff": null,
+          "aiMode": null,
+          "error": {
+            "code": "SERVICE_OFFLINE",
+            "message": "앱이 꺼져 있어요"
+          }
+        },
+        "200 firstCheck": {
+          "rows": [
+            {
+              "name": "코드 가져오기",
+              "state": "done",
+              "detail": "GitHub main a3f9c1"
+            },
+            {
+              "name": "API 목록 받기",
+              "state": "done",
+              "detail": "14개"
+            },
+            {
+              "name": "시나리오 만들기",
+              "state": "running",
+              "detail": "성능 · 보안 · 코드 품질"
+            }
+          ],
+          "pct": 70,
+          "done": false,
+          "apiCount": 14,
+          "apiDiff": null,
+          "aiMode": "llm",
+          "error": null
+        },
+        "404": {
+          "code": "NOT_FOUND",
+          "message": "찾을 수 없어요"
+        }
+      }
+    },
+    "POST /api/runs/prepare/{id}/use-default": {
+      "summary": "3 AI 추천 없이 기본 범위로 바로 가기 (ENTER)",
+      "owner": [
+        "B2"
+      ],
+      "responses": {
+        "200": {
+          "rows": [
+            {
+              "name": "코드 가져오기",
+              "state": "done",
+              "detail": "GitHub main a3f9c1"
+            },
+            {
+              "name": "API 목록 받기",
+              "state": "done",
+              "detail": "14개 · 지난번보다 +1"
+            },
+            {
+              "name": "시나리오 만들기",
+              "state": "running",
+              "detail": "성능 · 보안 · 코드 품질"
+            }
+          ],
+          "pct": 70,
+          "done": false,
+          "apiCount": 14,
+          "apiDiff": {
+            "added": 1,
+            "removed": 0,
+            "changed": 0,
+            "apis": [
+              {
+                "api": "POST /api/coupons",
+                "change": "new"
+              }
+            ]
+          },
+          "aiMode": "llm",
+          "error": null
+        },
+        "200 done": {
+          "rows": [
+            {
+              "name": "코드 가져오기",
+              "state": "done",
+              "detail": "GitHub main a3f9c1"
+            },
+            {
+              "name": "API 목록 받기",
+              "state": "done",
+              "detail": "14개 · 지난번보다 +1"
+            },
+            {
+              "name": "시나리오 만들기",
+              "state": "skipped",
+              "detail": "기본 범위 사용"
+            }
+          ],
+          "pct": 100,
+          "done": true,
+          "apiCount": 14,
+          "apiDiff": {
+            "added": 1,
+            "removed": 0,
+            "changed": 0,
+            "apis": [
+              {
+                "api": "POST /api/coupons",
+                "change": "new"
+              }
+            ]
+          },
+          "aiMode": "default",
+          "error": null
+        },
+        "200 early": {
+          "rows": [
+            {
+              "name": "코드 가져오기",
+              "state": "done",
+              "detail": "GitHub main a3f9c1"
+            },
+            {
+              "name": "API 목록 받기",
+              "state": "running",
+              "detail": ""
+            },
+            {
+              "name": "시나리오 만들기",
+              "state": "waiting",
+              "detail": "성능 · 보안 · 코드 품질"
+            }
+          ],
+          "pct": 30,
+          "done": false,
+          "apiCount": null,
+          "apiDiff": null,
+          "aiMode": null,
+          "error": null
+        },
+        "404": {
+          "code": "NOT_FOUND",
+          "message": "찾을 수 없어요"
+        },
+        "409": {
+          "code": "PREPARE_ENDED",
+          "message": "준비가 이미 끝났어요"
+        }
+      }
+    }
+  }
+}

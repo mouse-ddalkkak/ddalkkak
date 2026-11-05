@@ -1,0 +1,477 @@
+{
+  "screen": "6 결과",
+  "source": "docs/openapi.yaml ④ 예시에서 뽑음 · 고칠 때는 openapi.yaml을 고치고 python scripts/screen_contracts.py",
+  "calls": {
+    "GET /api/runs/{id}": {
+      "summary": "6 결과 요약 (8·1 \"지난 결과\"도 같은 것)",
+      "owner": [
+        "B2"
+      ],
+      "responses": {
+        "200": {
+          "runId": "run_5",
+          "service": "order-api",
+          "at": "2026-11-07T14:35:00+09:00",
+          "durationMin": 23,
+          "scenarioCount": 12,
+          "itemCount": 50,
+          "status": "done",
+          "codeSource": {
+            "type": "github",
+            "commit": "a3f9c1"
+          },
+          "scores": {
+            "perf": 68,
+            "sec": 79,
+            "code": 92
+          },
+          "summary": {
+            "perf": {
+              "line": "평소엔 빠르지만 200명에서 멈춰요",
+              "pass": 9,
+              "fail": 2,
+              "skipReason": null
+            },
+            "sec": {
+              "line": "대부분 막혔지만 한 곳이 뚫려요",
+              "pass": 20,
+              "fail": 1,
+              "skipReason": null
+            },
+            "code": {
+              "line": "건강해요 · 예외 처리 한 곳만",
+              "pass": 6,
+              "fail": 1,
+              "skipReason": null
+            }
+          },
+          "issues": [
+            {
+              "id": "s1",
+              "itemKey": "sec-2",
+              "area": "sec",
+              "level": "danger",
+              "certainty": "confirmed",
+              "title": "검색어 하나로 모든 주문이 보여요",
+              "tech": "SQL 문자열 연결 · GET /api/orders",
+              "impact": "누구나 다른 사람의 주문을 꺼내 볼 수 있어요",
+              "asIs": {
+                "value": "뚫림",
+                "label": "검색어 ' OR 1=1 -- 입력 시 전체 주문"
+              },
+              "toBe": {
+                "value": "막힘",
+                "label": "같은 입력에 빈 결과"
+              },
+              "metrics": [
+                {
+                  "name": "뚫린 입력값",
+                  "now": "1곳",
+                  "target": "0곳"
+                }
+              ],
+              "suspectReason": null,
+              "where": "GET /api/orders · OrderRepository.java:31",
+              "cause": "검색어를 SQL 문장에 그대로 이어 붙여요",
+              "fix": {
+                "recommended": "바인딩 파라미터(?)로 바꾸기",
+                "alternative": "JPA 메서드 쿼리로 바꾸기"
+              },
+              "passCriteria": "ZAP SQL 인젝션 경고 0건"
+            },
+            {
+              "id": "p1",
+              "itemKey": "perf-2",
+              "area": "perf",
+              "level": "warn",
+              "certainty": "confirmed",
+              "title": "200명이 되면 주문이 멈춰요",
+              "tech": "커넥션 풀 대기 · GET /api/orders/{id}",
+              "impact": "세일처럼 사람이 몰리면 주문을 못 받아요",
+              "asIs": {
+                "value": "2.1s",
+                "label": "느린 요청 p95 · 200명"
+              },
+              "toBe": {
+                "value": "500ms 이내",
+                "label": "느린 요청 p95 · 200명"
+              },
+              "metrics": [
+                {
+                  "name": "DB 연결 대기 최대",
+                  "now": "148건",
+                  "target": "0건"
+                },
+                {
+                  "name": "오류율",
+                  "now": "1.2%",
+                  "target": "1% 이하"
+                }
+              ],
+              "suspectReason": null,
+              "where": "GET /api/orders/{id} · application.yml",
+              "cause": "동시에 쓸 수 있는 DB 연결이 모자라 요청이 줄을 서요",
+              "fix": {
+                "recommended": "쿼리 수를 줄이고 커넥션 풀 크기 조정",
+                "alternative": null
+              },
+              "passCriteria": "200명 p95 500ms 이내 · 오류율 1% 이하"
+            },
+            {
+              "id": "p2",
+              "itemKey": "perf-1",
+              "area": "perf",
+              "level": "warn",
+              "certainty": "suspected",
+              "title": "주문 목록이 DB를 반복 호출해요",
+              "tech": "N+1 의심 · GET /api/orders",
+              "impact": "사용자가 늘수록 급격히 느려져요 · 가장 많이 쓰는 화면이라 체감 효과가 커요",
+              "asIs": {
+                "value": "487ms",
+                "label": "느린 요청 p95 · 50명"
+              },
+              "toBe": {
+                "value": "500ms 이내",
+                "label": "느린 요청 p95 · 50명"
+              },
+              "metrics": [
+                {
+                  "name": "요청당 DB 쿼리",
+                  "now": "1,240회",
+                  "target": "10회 이하"
+                },
+                {
+                  "name": "같은 쿼리 반복",
+                  "now": "98%",
+                  "target": "50% 미만"
+                },
+                {
+                  "name": "200명일 때",
+                  "now": "멈춤 위험",
+                  "target": "정상 응답"
+                }
+              ],
+              "suspectReason": "코드가 아니라 쿼리 수 정황으로 추정 · 고친 뒤 재검사하면 확인됨으로 바뀜",
+              "where": "GET /api/orders · OrderService.java:48",
+              "cause": "목록을 만들 때 항목마다 DB를 따로 조회해요",
+              "fix": {
+                "recommended": "필요한 데이터를 한 번에 묶어 조회",
+                "alternative": "자주 쓰는 결과는 캐시"
+              },
+              "passCriteria": "p95 500ms 이내 · 오류율 1% 이하"
+            },
+            {
+              "id": "c1",
+              "itemKey": "code-2",
+              "area": "code",
+              "level": "warn",
+              "certainty": "confirmed",
+              "title": "결제 오류를 조용히 삼켜요",
+              "tech": "빈 catch · PaymentService.java:113",
+              "impact": "결제가 실패해도 기록이 남지 않아 원인을 못 찾아요",
+              "asIs": {
+                "value": "1곳",
+                "label": "빈 catch 블록"
+              },
+              "toBe": {
+                "value": "0곳",
+                "label": "빈 catch 블록"
+              },
+              "metrics": [
+                {
+                  "name": "빈 catch",
+                  "now": "1곳",
+                  "target": "0곳"
+                }
+              ],
+              "suspectReason": null,
+              "where": "PaymentService.java:113",
+              "cause": "예외를 잡고 아무것도 하지 않아요",
+              "fix": {
+                "recommended": "로그를 남기고 다시 던지기",
+                "alternative": "정말 무시할 예외면 이유를 주석으로"
+              },
+              "passCriteria": "Semgrep 빈 catch 경고 0건"
+            }
+          ],
+          "passed": [
+            {
+              "area": "perf",
+              "name": "평소 응답 시간",
+              "value": "50명 p95 212ms"
+            },
+            {
+              "area": "sec",
+              "name": "관리자 API 비로그인 차단",
+              "value": "/api/admin/* 6개 모두 401"
+            },
+            {
+              "area": "code",
+              "name": "하드코딩된 비밀값",
+              "value": "0건"
+            }
+          ],
+          "reportError": null
+        },
+        "404": {
+          "code": "NOT_FOUND",
+          "message": "찾을 수 없어요"
+        }
+      }
+    },
+    "POST /api/runs/{id}/report": {
+      "summary": "6 \"다시 해석\" — 결과 원본을 다시 /ai/reports로",
+      "owner": [
+        "B2"
+      ],
+      "responses": {
+        "200": {
+          "runId": "run_5",
+          "service": "order-api",
+          "at": "2026-11-07T14:35:00+09:00",
+          "durationMin": 23,
+          "scenarioCount": 12,
+          "itemCount": 50,
+          "status": "done",
+          "codeSource": {
+            "type": "github",
+            "commit": "a3f9c1"
+          },
+          "scores": {
+            "perf": 68,
+            "sec": 79,
+            "code": 92
+          },
+          "summary": {
+            "perf": {
+              "line": "평소엔 빠르지만 200명에서 멈춰요",
+              "pass": 9,
+              "fail": 2,
+              "skipReason": null
+            },
+            "sec": {
+              "line": "대부분 막혔지만 한 곳이 뚫려요",
+              "pass": 20,
+              "fail": 1,
+              "skipReason": null
+            },
+            "code": {
+              "line": "건강해요 · 예외 처리 한 곳만",
+              "pass": 6,
+              "fail": 1,
+              "skipReason": null
+            }
+          },
+          "issues": [
+            {
+              "id": "s1",
+              "itemKey": "sec-2",
+              "area": "sec",
+              "level": "danger",
+              "certainty": "confirmed",
+              "title": "검색어 하나로 모든 주문이 보여요",
+              "tech": "SQL 문자열 연결 · GET /api/orders",
+              "impact": "누구나 다른 사람의 주문을 꺼내 볼 수 있어요",
+              "asIs": {
+                "value": "뚫림",
+                "label": "검색어 ' OR 1=1 -- 입력 시 전체 주문"
+              },
+              "toBe": {
+                "value": "막힘",
+                "label": "같은 입력에 빈 결과"
+              },
+              "metrics": [
+                {
+                  "name": "뚫린 입력값",
+                  "now": "1곳",
+                  "target": "0곳"
+                }
+              ],
+              "suspectReason": null,
+              "where": "GET /api/orders · OrderRepository.java:31",
+              "cause": "검색어를 SQL 문장에 그대로 이어 붙여요",
+              "fix": {
+                "recommended": "바인딩 파라미터(?)로 바꾸기",
+                "alternative": "JPA 메서드 쿼리로 바꾸기"
+              },
+              "passCriteria": "ZAP SQL 인젝션 경고 0건"
+            },
+            {
+              "id": "p1",
+              "itemKey": "perf-2",
+              "area": "perf",
+              "level": "warn",
+              "certainty": "confirmed",
+              "title": "200명이 되면 주문이 멈춰요",
+              "tech": "커넥션 풀 대기 · GET /api/orders/{id}",
+              "impact": "세일처럼 사람이 몰리면 주문을 못 받아요",
+              "asIs": {
+                "value": "2.1s",
+                "label": "느린 요청 p95 · 200명"
+              },
+              "toBe": {
+                "value": "500ms 이내",
+                "label": "느린 요청 p95 · 200명"
+              },
+              "metrics": [
+                {
+                  "name": "DB 연결 대기 최대",
+                  "now": "148건",
+                  "target": "0건"
+                },
+                {
+                  "name": "오류율",
+                  "now": "1.2%",
+                  "target": "1% 이하"
+                }
+              ],
+              "suspectReason": null,
+              "where": "GET /api/orders/{id} · application.yml",
+              "cause": "동시에 쓸 수 있는 DB 연결이 모자라 요청이 줄을 서요",
+              "fix": {
+                "recommended": "쿼리 수를 줄이고 커넥션 풀 크기 조정",
+                "alternative": null
+              },
+              "passCriteria": "200명 p95 500ms 이내 · 오류율 1% 이하"
+            },
+            {
+              "id": "p2",
+              "itemKey": "perf-1",
+              "area": "perf",
+              "level": "warn",
+              "certainty": "suspected",
+              "title": "주문 목록이 DB를 반복 호출해요",
+              "tech": "N+1 의심 · GET /api/orders",
+              "impact": "사용자가 늘수록 급격히 느려져요 · 가장 많이 쓰는 화면이라 체감 효과가 커요",
+              "asIs": {
+                "value": "487ms",
+                "label": "느린 요청 p95 · 50명"
+              },
+              "toBe": {
+                "value": "500ms 이내",
+                "label": "느린 요청 p95 · 50명"
+              },
+              "metrics": [
+                {
+                  "name": "요청당 DB 쿼리",
+                  "now": "1,240회",
+                  "target": "10회 이하"
+                },
+                {
+                  "name": "같은 쿼리 반복",
+                  "now": "98%",
+                  "target": "50% 미만"
+                },
+                {
+                  "name": "200명일 때",
+                  "now": "멈춤 위험",
+                  "target": "정상 응답"
+                }
+              ],
+              "suspectReason": "코드가 아니라 쿼리 수 정황으로 추정 · 고친 뒤 재검사하면 확인됨으로 바뀜",
+              "where": "GET /api/orders · OrderService.java:48",
+              "cause": "목록을 만들 때 항목마다 DB를 따로 조회해요",
+              "fix": {
+                "recommended": "필요한 데이터를 한 번에 묶어 조회",
+                "alternative": "자주 쓰는 결과는 캐시"
+              },
+              "passCriteria": "p95 500ms 이내 · 오류율 1% 이하"
+            },
+            {
+              "id": "c1",
+              "itemKey": "code-2",
+              "area": "code",
+              "level": "warn",
+              "certainty": "confirmed",
+              "title": "결제 오류를 조용히 삼켜요",
+              "tech": "빈 catch · PaymentService.java:113",
+              "impact": "결제가 실패해도 기록이 남지 않아 원인을 못 찾아요",
+              "asIs": {
+                "value": "1곳",
+                "label": "빈 catch 블록"
+              },
+              "toBe": {
+                "value": "0곳",
+                "label": "빈 catch 블록"
+              },
+              "metrics": [
+                {
+                  "name": "빈 catch",
+                  "now": "1곳",
+                  "target": "0곳"
+                }
+              ],
+              "suspectReason": null,
+              "where": "PaymentService.java:113",
+              "cause": "예외를 잡고 아무것도 하지 않아요",
+              "fix": {
+                "recommended": "로그를 남기고 다시 던지기",
+                "alternative": "정말 무시할 예외면 이유를 주석으로"
+              },
+              "passCriteria": "Semgrep 빈 catch 경고 0건"
+            }
+          ],
+          "passed": [
+            {
+              "area": "perf",
+              "name": "평소 응답 시간",
+              "value": "50명 p95 212ms"
+            },
+            {
+              "area": "sec",
+              "name": "관리자 API 비로그인 차단",
+              "value": "/api/admin/* 6개 모두 401"
+            },
+            {
+              "area": "code",
+              "name": "하드코딩된 비밀값",
+              "value": "0건"
+            }
+          ],
+          "reportError": null
+        },
+        "404": {
+          "code": "NOT_FOUND",
+          "message": "찾을 수 없어요"
+        },
+        "503": {
+          "code": "AI_UNAVAILABLE",
+          "message": "해석하지 못했어요 · 다시 해석해 주세요"
+        }
+      }
+    },
+    "POST /api/runs/{id}/prompts": {
+      "summary": "6·7 수정 요청문 만들기 → /ai/prompts (저장 안 함)",
+      "owner": [
+        "B2"
+      ],
+      "request bundle": {
+        "issueIds": [
+          "p2",
+          "s1",
+          "c1"
+        ],
+        "includeLogs": false
+      },
+      "request single": {
+        "issueIds": [
+          "p2"
+        ],
+        "includeLogs": true
+      },
+      "responses": {
+        "200": {
+          "text": "Spring Boot 3.2에서 아래 3개 문제를 고쳐 주세요.\n\n① [보안 · 위험] 검색어 하나로 모든 주문이 보여요 — GET /api/orders · OrderRepository.java:31 · 검색어 ' OR 1=1 -- 입력 시 전체 주문 뚫림 → 막힘\n② [코드 품질 · 주의] 결제 오류를 조용히 삼켜요 — PaymentService.java:113 · 빈 catch 블록 1곳 → 0곳\n③ [성능 · 주의] 주문 목록이 DB를 반복 호출해요 — GET /api/orders · OrderService.java:48 · 느린 요청 p95 · 50명 487ms → 500ms 이내\n\n고치는 순서: ① → ② → ③\n요구사항: 항목별 원인 확인 → 수정 → 회귀 테스트 · 서로 영향 주는 변경은 먼저 알려 주세요"
+        },
+        "400": {
+          "code": "NO_ITEMS",
+          "message": "항목을 하나 이상 골라 주세요"
+        },
+        "404": {
+          "code": "NOT_FOUND",
+          "message": "찾을 수 없어요"
+        }
+      }
+    }
+  }
+}

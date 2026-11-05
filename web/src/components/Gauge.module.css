@@ -1,0 +1,3 @@
+.gauge{display:flex;gap:4px;height:28px;padding:4px;border:4px solid var(--ink-50);background:var(--ink-900)}
+.tall{height:32px}
+.cell{flex:1;background:var(--surface-gauge-empty)}

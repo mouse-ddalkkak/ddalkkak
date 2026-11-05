@@ -1,0 +1,4 @@
+.frame{position:relative;border:var(--border-w-frame) solid var(--magenta-500);border-radius:var(--radius-frame);background:var(--ink-900);display:flex;flex-direction:column;align-items:center}
+.rivet{position:absolute;width:var(--rivet-size);height:var(--rivet-size);background:var(--cyan-300);box-shadow:var(--shadow-rivet)}
+.dim{background:var(--ink-600);box-shadow:0 0 0 3px color-mix(in oklch,var(--ink-600) 35%,transparent)}
+.lt{left:18px;top:18px}.rt{right:18px;top:18px}.lb{left:18px;bottom:18px}.rb{right:18px;bottom:18px}

@@ -1,0 +1,4 @@
+rootProject.name = 'order-api'
+
+// 스타터킷은 아직 배포 전이라 이 저장소의 소스를 그대로 붙인다 (docs/starter-kit.md §6)
+includeBuild '../../starter-kit'

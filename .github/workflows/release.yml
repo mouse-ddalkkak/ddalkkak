@@ -1,0 +1,71 @@
+# 출시: v* 태그가 오면 server · ai 이미지를 GHCR 에 올리고 GitHub Release 를 만든다.
+# 사용자는 server 이미지 하나를 docker run 한다(README "설치"). server 가 같은 버전의 ai 와 postgres 를 띄운다(server/start.sh).
+# 가장 높은 버전일 때만 :latest 와 "Latest release" 를 옮긴다(낮은 버전 핫픽스 태그는 그 버전 이미지만).
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write # Release 만들기
+  packages: write # GHCR push
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      REGISTRY: ghcr.io/${{ github.repository_owner }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # 가장 높은 태그를 보려고 태그를 모두 받는다
+
+      - id: v
+        run: |
+          # sort -V 는 v1.0.0-rc.1 을 v1.0.0 뒤에 둔다 — 정식 버전(- 없음)끼리만 비교해 rc 가 latest 를 가져가지 않게
+          top="$(git tag -l 'v*' | grep -v -- - | sort -V | tail -1)"
+          echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+          echo "latest=$([ "$GITHUB_REF_NAME" = "$top" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # ai 를 먼저 올린다: server 이미지가 latest 로 보이는 순간 같은 버전 ai 를 받을 수 있게
+      - name: ai 이미지
+        uses: docker/build-push-action@v6
+        with:
+          context: ai
+          platforms: linux/amd64,linux/arm64
+          push: true
+          labels: org.opencontainers.image.source=https://github.com/${{ github.repository }}
+          tags: |
+            ${{ env.REGISTRY }}/ddalkkak-ai:${{ steps.v.outputs.version }}
+            ${{ steps.v.outputs.latest == 'true' && format('{0}/ddalkkak-ai:latest', env.REGISTRY) || '' }}
+
+      - name: server 이미지
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: server/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          build-args: DDALKKAK_VERSION=${{ steps.v.outputs.version }}
+          labels: org.opencontainers.image.source=https://github.com/${{ github.repository }}
+          tags: |
+            ${{ env.REGISTRY }}/ddalkkak-server:${{ steps.v.outputs.version }}
+            ${{ steps.v.outputs.latest == 'true' && format('{0}/ddalkkak-server:latest', env.REGISTRY) || '' }}
+
+      - name: Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.v.outputs.version }}
+          LATEST: ${{ steps.v.outputs.latest }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" --title "딸깍 $GITHUB_REF_NAME" --latest="$LATEST" \
+            --notes "설치: https://github.com/${{ github.repository }}#설치 · 이 버전으로 고정하려면 설치 명령의 이미지를 ${REGISTRY}/ddalkkak-server:$VERSION 로 바꾼다"

@@ -1,0 +1,5 @@
+.row{display:flex;align-items:baseline;gap:10px;font:var(--type-body);letter-spacing:2px}
+.name{white-space:nowrap}
+.name[data-none]{color:var(--ink-400)}
+.leader{flex:1;border-bottom:var(--border-dotted);transform:translateY(-6px)}
+.score{font:var(--type-score)}

@@ -1,0 +1,23 @@
+CREATE TABLE run_issue (
+  id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  run_id BIGINT NOT NULL REFERENCES run (id),
+  issue_key VARCHAR(20) NOT NULL,
+  item_key VARCHAR(50),
+  area VARCHAR(10) NOT NULL,
+  level VARCHAR(10) NOT NULL,
+  certainty VARCHAR(10),
+  title TEXT NOT NULL,
+  tech TEXT,
+  impact TEXT,
+  as_is TEXT,
+  to_be TEXT,
+  metrics TEXT,
+  suspect_reason TEXT,
+  where_text TEXT,
+  cause TEXT,
+  fix TEXT,
+  pass_criteria TEXT,
+  location_file VARCHAR(512),
+  location_line INT,
+  code_lines TEXT
+);

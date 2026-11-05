@@ -1,0 +1,11 @@
+# 딸깍 로컬 Semgrep 규칙 (docs/scan.md §5). 레지스트리(p/java · p/secrets)에 없는 규칙만 둔다.
+# 검사마다 ~/.ddalkkak/runs/{runId}/out/rules.yml 로 써 두고 --config /out/rules.yml 로 건다. 결과 check_id 는 out.<id>
+rules:
+  - id: ddalkkak.java.empty-catch
+    languages: [java]
+    severity: WARNING
+    message: 예외를 삼키는 빈 catch — 장애가 조용히 묻혀요
+    patterns:
+      - pattern: |
+          try { ... } catch ($T $E) { }
+      - focus-metavariable: $E
