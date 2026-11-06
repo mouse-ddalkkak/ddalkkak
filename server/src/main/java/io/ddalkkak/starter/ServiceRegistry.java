@@ -3,6 +3,10 @@ package io.ddalkkak.starter;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import io.ddalkkak.ApiException;
 import io.ddalkkak.ErrorCode;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.security.SecureRandom;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -10,8 +14,10 @@ import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -30,6 +36,8 @@ import org.springframework.transaction.annotation.Transactional;
 public class ServiceRegistry {
 
 	static final String PREFIX = "svc_";
+
+	private static final SecureRandom RANDOM = new SecureRandom();
 
 	/** 이 시간 동안 생존 신호가 없으면 연결 끊김 (F-CONN-06) */
 	static final Duration ALIVE = Duration.ofSeconds(30);
@@ -84,6 +92,9 @@ public class ServiceRegistry {
 		Instant seenAt;
 
 		Health health;
+
+		/** 허용 때 발급한 토큰 원문. 앱이 이 토큰을 실은 신호를 보낼 때까지만 둔다 (그때까지 생존 신호 응답에 다시 싣는다) */
+		String token;
 
 		Request(String id) {
 			this.id = id;
@@ -141,14 +152,15 @@ public class ServiceRegistry {
 		}
 	}
 
-	/** POST /starter/v1/hello. 같은 앱(이름 + host + port)이면 같은 요청을 다시 대기로. 이미 허용된 앱이면 approved */
+	/**
+	 * POST /starter/v1/hello. 허용된 앱이 그 서비스 토큰을 실어 보내면 approved. 토큰이 없거나 틀리면 이름이 같아도 대기 — 사람이 다시 허용한다 (-211).
+	 * hello 마다 새 요청이다. 같은 앱 이름의 대기 요청과 합치면 그 requestId 를 다른 프로그램도 받아 허용 때 토큰을 가져간다 (!112 리뷰)
+	 */
 	@Transactional
-	synchronized Map<String, Object> hello(Hello hello) {
-		Optional<ServiceRow> known = services.findFirstByNameAndHostAndPort(hello.appName(), hello.host(), hello.port());
-		Request request = requests.values().stream()
-			.filter(r -> !"approved".equals(r.status) && sameApp(r.hello, hello))
-			.findFirst()
-			.orElseGet(() -> new Request("req_" + UUID.randomUUID().toString().substring(0, 8)));
+	synchronized Map<String, Object> hello(Hello hello, String token) {
+		Optional<ServiceRow> known = services.findFirstByNameAndHostAndPort(hello.appName(), hello.host(), hello.port())
+			.filter(row -> matches(row, token));
+		Request request = new Request("req_" + UUID.randomUUID().toString().substring(0, 8));
 		requests.put(request.id, request);
 		request.hello = hello;
 		request.requestedAt = clock.instant();
@@ -157,6 +169,7 @@ public class ServiceRegistry {
 			// 다시 켜진 앱은 커밋 · PID 가 바뀌었을 수 있다
 			ServiceRow row = known.get();
 			fill(row, hello);
+			delivered(row.id);
 			request.status = "approved";
 			request.serviceId = row.id;
 			beats.put(row.id, new Beat(clock.instant(), beats.containsKey(row.id) ? beats.get(row.id).health : null));
@@ -172,22 +185,35 @@ public class ServiceRegistry {
 	}
 
 	/**
-	 * POST /starter/v1/heartbeat. serviceId 가 DB 에 있으면 approved (딸깍이 다시 켜져 요청을 잃어도). 아니면 requestId 의 상태.
-	 * 둘 다 모르면 404 → 스타터킷이 hello 부터 다시
+	 * POST /starter/v1/heartbeat. serviceId 가 DB 에 있고 토큰이 맞으면 approved (딸깍이 다시 켜져 요청을 잃어도). 아니면 requestId 의 상태.
+	 * 둘 다 모르면 404 → 스타터킷이 hello 부터 다시. 허용된 서비스인데 토큰이 틀리면 401 → 스타터킷이 토큰을 지우고 hello 부터 다시.
+	 * 막 허용된 요청은 토큰 없이도 받고 응답에 토큰을 싣는다 — 앱이 그 토큰을 실어 보낼 때까지 (-211)
 	 */
-	synchronized Map<String, Object> heartbeat(String requestId, String serviceId, Health health) {
+	synchronized Map<String, Object> heartbeat(String requestId, String serviceId, Health health, String token) {
 		Request request = requestId == null ? null : requests.get(requestId);
-		Long id = find(serviceId).map(row -> row.id).orElse(null);
-		if (id == null && request != null && "approved".equals(request.status) && services.existsById(request.serviceId)) {
-			id = request.serviceId;
+		boolean approved = request != null && "approved".equals(request.status);
+		Optional<ServiceRow> found = find(serviceId);
+		if (found.isEmpty() && approved) {
+			found = services.findById(request.serviceId);
 		}
 		Map<String, Object> body = new LinkedHashMap<>();
-		if (id != null) {
-			beats.put(id, new Beat(clock.instant(), health));
-			Map<String, Command> queued = commands.remove(id);
+		if (found.isPresent()) {
+			ServiceRow row = found.get();
+			boolean valid = matches(row, token);
+			if (valid) {
+				delivered(row.id);
+			}
+			else if (!approved || !row.id.equals(request.serviceId) || request.token == null) {
+				throw new ApiException(ErrorCode.STARTER_TOKEN_INVALID);
+			}
+			beats.put(row.id, new Beat(clock.instant(), health));
+			Map<String, Command> queued = commands.remove(row.id);
 			body.put("status", "approved");
-			body.put("serviceId", PREFIX + id);
+			body.put("serviceId", PREFIX + row.id);
 			body.put("commands", queued == null ? List.of() : new ArrayList<>(queued.values()));
+			if (!valid) {
+				body.put("token", request.token);
+			}
 			return body;
 		}
 		if (request == null || "approved".equals(request.status)) {
@@ -201,29 +227,41 @@ public class ServiceRegistry {
 		return body;
 	}
 
-	/** GET /api/services/requests. 대기 중인 요청, 최근 것부터 */
+	/** GET /api/services/requests. 대기 중인 요청, 최근 것부터. 30초 동안 신호가 없는 요청(다시 켜져 hello 를 새로 보낸 앱의 옛 요청)은 뺀다 */
 	synchronized List<ConnectRequest> pending() {
+		Instant since = clock.instant().minus(ALIVE);
 		return requests.values().stream()
-			.filter(r -> "pending".equals(r.status))
+			.filter(r -> "pending".equals(r.status) && r.seenAt.isAfter(since))
 			.sorted(Comparator.comparing((Request r) -> r.requestedAt).reversed())
 			.map(r -> new ConnectRequest(r.id, r.hello.appName(), r.hello.framework(), r.hello.frameworkVersion(), r.hello.host(),
 					r.hello.port(), r.hello.pid(), r.hello.javaVersion(), r.hello.buildTool(), kst(r.requestedAt)))
 			.toList();
 	}
 
-	/** POST /api/services/requests/{id}/approve. service 에 저장. 이미 연결된 서비스가 있으면 409 */
+	/**
+	 * POST /api/services/requests/{id}/approve. service 에 저장하고 새 토큰을 발급한다(DB 에는 해시만). 같은 앱(이름 + host + port)이
+	 * 이미 있으면 그 줄에 새 토큰 — 토큰을 잃은 앱의 다시 허용, 옛 토큰은 401. 다른 앱이 이미 연결돼 있으면 409
+	 */
 	@Transactional
 	synchronized ServiceRow approve(String requestId) {
 		Request request = pendingRequest(requestId);
-		if (services.count() > 0) {
-			throw new ApiException(ErrorCode.ALREADY_CONNECTED);
+		Hello hello = request.hello;
+		ServiceRow row = services.findFirstByNameAndHostAndPort(hello.appName(), hello.host(), hello.port()).orElse(null);
+		if (row == null) {
+			if (services.count() > 0) {
+				throw new ApiException(ErrorCode.ALREADY_CONNECTED);
+			}
+			row = new ServiceRow();
 		}
-		ServiceRow row = new ServiceRow();
-		fill(row, request.hello);
+		fill(row, hello);
 		row.approvedAt = LocalDateTime.now(clock);
+		String token = newToken();
+		row.tokenHash = hash(token);
 		services.save(row);
+		delivered(row.id);
 		request.status = "approved";
 		request.serviceId = row.id;
+		request.token = token;
 		// 허용 전 마지막 신호를 이어받는다 — 허용 직후 홈이 "연결됨"
 		beats.put(row.id, new Beat(request.seenAt, request.health));
 		return row;
@@ -240,6 +278,39 @@ public class ServiceRegistry {
 			throw new ApiException(ErrorCode.NOT_FOUND);
 		}
 		return request;
+	}
+
+	/** /starter/v1/apis · measures 앞. 허용된 서비스인데 토큰이 틀리면 401. 모르는 serviceId 는 받는 쪽이 404 */
+	synchronized void authorize(String serviceId, String token) {
+		find(serviceId).filter(row -> !matches(row, token)).ifPresent(row -> {
+			throw new ApiException(ErrorCode.STARTER_TOKEN_INVALID);
+		});
+	}
+
+	/** 앱이 토큰을 받았다 → 그 서비스 요청에 남은 원문을 지운다 */
+	private void delivered(Long serviceId) {
+		requests.values().stream().filter(r -> serviceId.equals(r.serviceId)).forEach(r -> r.token = null);
+	}
+
+	/** 32바이트 무작위 → base64url 43자 */
+	private static String newToken() {
+		byte[] bytes = new byte[32];
+		RANDOM.nextBytes(bytes);
+		return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
+	}
+
+	static String hash(String token) {
+		try {
+			return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(token.getBytes(StandardCharsets.UTF_8)));
+		}
+		catch (NoSuchAlgorithmException e) {
+			throw new IllegalStateException(e);
+		}
+	}
+
+	private static boolean matches(ServiceRow row, String token) {
+		return row.tokenHash != null && token != null && MessageDigest.isEqual(row.tokenHash.getBytes(StandardCharsets.UTF_8),
+				hash(token).getBytes(StandardCharsets.UTF_8));
 	}
 
 	private ConnectedService connected(ServiceRow row) {
@@ -272,10 +343,6 @@ public class ServiceRegistry {
 		row.pid = hello.pid();
 		row.starterVersion = hello.starterVersion();
 		row.runningCommit = hello.runningCommit();
-	}
-
-	private static boolean sameApp(Hello a, Hello b) {
-		return a.appName().equals(b.appName()) && a.host().equals(b.host()) && a.port().equals(b.port());
 	}
 
 	static OffsetDateTime kst(Instant at) {

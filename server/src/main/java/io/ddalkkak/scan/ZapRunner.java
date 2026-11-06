@@ -192,6 +192,10 @@ public class ZapRunner {
 	String openapi(String api, int port, ApiCatalog.Endpoint endpoint) {
 		String method = K6Script.method(api.strip()).toLowerCase(Locale.ROOT);
 		String path = api.strip().substring(api.strip().indexOf(' ') + 1);
+		// 경로는 servers.url 뒤에 붙는다 — "@evil.host/x" 는 호스트 자리를 바꾸고, "//evil.host/x" 는 ZAP 이 다른 호스트로 풀 수 있다
+		if (!path.startsWith("/") || path.startsWith("//")) {
+			throw new IllegalArgumentException("검사 대상 앱 밖 주소: " + path);
+		}
 		List<Map<String, Object>> params = new ArrayList<>();
 		if (endpoint != null && endpoint.params() != null) {
 			for (ApiCatalog.Param p : endpoint.params()) {

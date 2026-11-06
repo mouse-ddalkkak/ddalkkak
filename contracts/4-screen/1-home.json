@@ -12,6 +12,8 @@
           "service": {
             "id": "svc_1",
             "name": "order-api",
+            "host": "localhost",
+            "port": 8080,
             "connected": true,
             "apiCount": 14
           },
@@ -54,12 +56,36 @@
           "service": {
             "id": "svc_1",
             "name": "order-api",
+            "host": "localhost",
+            "port": 8080,
             "connected": false,
             "apiCount": 14
           },
           "health": null,
           "lastRun": null
         }
+      }
+    },
+    "GET /api/services/requests": {
+      "summary": "0-3 연결 요청 카드 (5초마다)",
+      "owner": [
+        "B2"
+      ],
+      "responses": {
+        "200": [
+          {
+            "id": "req_7f2a",
+            "appName": "order-api",
+            "framework": "Spring Boot",
+            "frameworkVersion": "3.2.5",
+            "host": "localhost",
+            "port": 8080,
+            "pid": 41822,
+            "javaVersion": "17",
+            "buildTool": "Gradle",
+            "requestedAt": "2026-10-31T10:02:11+09:00"
+          }
+        ]
       }
     }
   }

@@ -10,12 +10,14 @@ import ScoreRow from './ScoreRow'
 import ClockPill from './ClockPill'
 import { gb, shortDateTime, dateOnly, uptime } from '../../utils/format'
 import { gaugeColor, scoreColor } from '../../utils/score'
-import { homeGauges, serverState } from './homeState'
+import { getConnectRequests } from '../../api/services'
+import { homeGauges, scanTarget, serverState, waitingReapprove } from './homeState'
 import s from './Home.module.css'
 
 // 1 홈 — GET /api/home 10초마다 (api.md "폴링 주기")
 export default function Home() {
   const [data, setData] = useState<HomeData>()
+  const [waiting, setWaiting] = useState(false)
   const [sel, setSel] = useState(0)
   const menuRef = useRef<{ go: () => void }[]>([])
   const itemRefs = useRef<(HTMLDivElement | null)[]>([])
@@ -30,7 +32,12 @@ export default function Home() {
   usePolling(
     async (alive) => {
       const d = await getHome()
-      if (alive()) setData(d)
+      // 끊겼을 때만 연결 요청을 본다 — 토큰을 잃은 앱은 같은 이름 · host · port로 다시 허용을 기다린다 (-211)
+      const w = d.service?.connected === false && waitingReapprove(d.service, await getConnectRequests().catch(() => []))
+      if (alive()) {
+        setData(d)
+        setWaiting(w)
+      }
     },
     10_000,
     [],
@@ -43,8 +50,8 @@ export default function Home() {
     {
       label: '딸깍 검사',
       sub: '① 코드 연결 → ② 검사 범위 → 시작',
-      // 연결된 서비스가 없으면 0-3 (F-HOME-01 예외)
-      go: () => (location.hash = service ? '#/code' : '#/onboarding'),
+      // 연결된 서비스가 없거나, 끊겼는데 다시 허용할 요청이 있으면 0-3 (F-HOME-01 예외, -211)
+      go: () => (location.hash = scanTarget(service, waiting)),
     },
     ...(lastRun ? [{ label: '지난 결과', sub: shortDateTime(lastRun.at), go: () => (location.hash = `#/runs/${lastRun.runId}`) }] : []),
     { label: '검사 이력', sub: '', go: () => (location.hash = '#/history') },

@@ -1,8 +1,8 @@
 # order-api — 딸깍 샘플 검사 대상 앱
 
-딸깍이 검사할 작은 주문 앱. 결과가 매번 같게 나오도록 **문제를 일부러 심어 두었다** — 고치지 않는다. 심은 문제가 그대로인지는 `PlantedProblemsTest`가 지킨다.
+딸깍이 검사할 작은 주문 앱. 결과가 매번 같게 나오도록 **문제를 일부러 심어 두었다** — 고치지 않는다.
 
-Spring Boot 3.2 · Java 17 · PostgreSQL. 스타터킷은 이 저장소의 `starter-kit/`을 composite build로 붙인다 ([docs/starter-kit.md §6](../../docs/starter-kit.md#6-배포--지원-버전)).
+Spring Boot 3.2 · Java 17 · PostgreSQL. 스타터킷은 이 저장소의 `starter-kit/`을 composite build로 붙인다.
 
 ## 실행
 
@@ -15,7 +15,6 @@ docker compose up -d        # PostgreSQL (localhost:5433, 딸깍 DB와 별개)
 - 앱은 컨테이너가 아니라 호스트에서 띄운다. 스타터킷이 `localhost:7777`의 딸깍을 찾기 때문이다
 - 켤 때마다 테이블을 새로 만들고 같은 시드를 넣는다 (`ddl-auto: create`). 가입한 계정 · 주문 · 로그인 토큰은 다시 켜면 사라진다
 - 가입하면 그 계정에 주문 320건이 생긴다 (아래 "시드 데이터"). 딸깍은 검사 때 새로 가입한 테스트 계정으로 부르기 때문이다
-- 시험: `./gradlew test` (Docker 없이 H2 PostgreSQL 모드)
 
 ```bash
 curl -X POST localhost:8080/api/auth/signup -H 'Content-Type: application/json' \
@@ -77,9 +76,7 @@ for i in $(seq 10); do curl -s -o /dev/null localhost:8080/api/products/$i; done
 
 ## 심은 문제
 
-[docs/starter-kit.md §7](../../docs/starter-kit.md#7-샘플-앱-order-api-문제-표)과 같은 표. 기대 결과 · 잡는 도구는 그쪽이 정본.
-
-| | 문제 | 위치 | 확인 (`PlantedProblemsTest`) |
+| | 문제 | 위치 | 확인 |
 | --- | --- | --- | --- |
 | ① | 주문 목록 N+1 — 주문마다 상품을 따로 조회 | `order/OrderService#list` (`OrderView.of`가 `getProduct().getName()`) · `GET /api/orders` | 새로 가입한 계정으로 50명 동시 → 요청마다 로그 `executing 321 JDBC statements`. 주문을 더 만들어도 321 |
 | ② | 검색 SQL 문자열 연결 | `order/OrderSearchRepository#search` (네이티브 쿼리 · Semgrep `formatted-sql-string` ERROR) · `GET /api/orders?q=` | `q=' OR '1'='1' --` → 남의 주문까지 나온다 (내 320건보다 많다). `q='` → 500 · 본문에 DB 오류 문구 (`OrderController#dbError`). ZAP 2.16.1 SQL 주입 규칙(40018)은 High · 신뢰도 Low로 잡고, 근거는 500 상태 줄이다 |

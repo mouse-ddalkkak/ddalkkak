@@ -6,6 +6,8 @@ import org.springframework.http.HttpStatus;
 public enum ErrorCode {
 
 	NOT_LOGGED_IN(HttpStatus.UNAUTHORIZED, "다시 로그인해 주세요"),
+	// 스타터킷만 받는다 (/starter/v1/*). 받으면 토큰을 지우고 hello 부터 다시 → 사람이 다시 허용
+	STARTER_TOKEN_INVALID(HttpStatus.UNAUTHORIZED, "스타터킷 토큰이 맞지 않아요"),
 	LOGIN_FAILED(HttpStatus.UNAUTHORIZED, "아이디 또는 비밀번호가 맞지 않아요"),
 	INVALID_URL(HttpStatus.BAD_REQUEST, "주소를 확인해 주세요 · http(s)://…"),
 	NOT_FOUND(HttpStatus.NOT_FOUND, "찾을 수 없어요"),

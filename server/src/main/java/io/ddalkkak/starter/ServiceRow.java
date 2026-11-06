@@ -49,6 +49,10 @@ class ServiceRow {
 	@Column(nullable = false)
 	LocalDateTime approvedAt;
 
+	/** 스타터킷 토큰의 SHA-256 hex. 원문은 저장하지 않는다 (-211) */
+	@Column(length = 64)
+	String tokenHash;
+
 	String key() {
 		return ServiceRegistry.PREFIX + id;
 	}

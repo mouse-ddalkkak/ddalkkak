@@ -349,7 +349,7 @@ class AuthzCheck {
 	}
 
 	private HttpResponse<String> get(int port, String path, String token) throws IOException, InterruptedException {
-		HttpRequest.Builder request = HttpRequest.newBuilder(URI.create(target.origin(port) + path)).timeout(TIMEOUT).GET();
+		HttpRequest.Builder request = HttpRequest.newBuilder(URI.create(K6Script.sameApp(target.origin(port), target.origin(port) + path))).timeout(TIMEOUT).GET();
 		if (token != null) {
 			request.header("Authorization", "Bearer " + token);
 		}

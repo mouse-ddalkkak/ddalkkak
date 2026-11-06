@@ -18,7 +18,8 @@ class ConnectRequestController {
 	record Approved(String serviceId, String name) {
 	}
 
-	record HomeService(String id, String name, boolean connected, Integer apiCount) {
+	/** host · port 는 화면이 다시 허용할 연결 요청(이름 · host · port 가 같은)을 찾을 때 쓴다 (-211) */
+	record HomeService(String id, String name, String host, int port, boolean connected, Integer apiCount) {
 	}
 
 	record HomeHealth(double cpu, ServiceRegistry.Mem mem, ServiceRegistry.Disk disk, long uptimeSec, OffsetDateTime serverTime) {
@@ -67,7 +68,7 @@ class ConnectRequestController {
 			HomeHealth health = registry.health(id)
 				.map(h -> new HomeHealth(h.cpu(), h.mem(), h.disk(), h.uptimeSec(), ServiceRegistry.kst(clock.instant())))
 				.orElse(null);
-			return new Home(new HomeService(s.id(), s.name(), s.connected(), catalog.latestCount(id)), health,
+			return new Home(new HomeService(s.id(), s.name(), s.host(), s.port(), s.connected(), catalog.latestCount(id)), health,
 					history.latest(s.id()).orElse(null));
 		}).orElse(new Home(null, null, null));
 	}

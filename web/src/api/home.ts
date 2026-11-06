@@ -2,7 +2,7 @@ import { api } from './client'
 import type { Scores } from './runs'
 
 export type Home = {
-  service: { id: string; name: string; connected: boolean; apiCount: number | null } | null
+  service: { id: string; name: string; host: string; port: number; connected: boolean; apiCount: number | null } | null
   health: {
     cpu: number
     mem: { usedMb: number; totalMb: number }

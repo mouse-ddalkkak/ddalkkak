@@ -14,10 +14,12 @@ permissions:
 jobs:
   release:
     runs-on: ubuntu-latest
+    # 저장소 설정의 environment release 필수 승인자가 승인해야 이미지를 올린다
+    environment: release
     env:
       REGISTRY: ghcr.io/${{ github.repository_owner }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           fetch-depth: 0 # 가장 높은 태그를 보려고 태그를 모두 받는다
 
@@ -28,9 +30,9 @@ jobs:
           echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
           echo "latest=$([ "$GITHUB_REF_NAME" = "$top" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
 
-      - uses: docker/setup-qemu-action@v3
-      - uses: docker/setup-buildx-action@v3
-      - uses: docker/login-action@v3
+      - uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3.7.0
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -38,7 +40,7 @@ jobs:
 
       # ai 를 먼저 올린다: server 이미지가 latest 로 보이는 순간 같은 버전 ai 를 받을 수 있게
       - name: ai 이미지
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
         with:
           context: ai
           platforms: linux/amd64,linux/arm64
@@ -49,7 +51,7 @@ jobs:
             ${{ steps.v.outputs.latest == 'true' && format('{0}/ddalkkak-ai:latest', env.REGISTRY) || '' }}
 
       - name: server 이미지
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
         with:
           context: .
           file: server/Dockerfile

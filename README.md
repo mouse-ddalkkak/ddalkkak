@@ -22,7 +22,7 @@ http://localhost:7777 을 열고 출력된 `admin` 비밀번호로 로그인합�
 
 ```groovy
 repositories { maven { url 'https://jitpack.io' } }
-dependencies { implementation 'com.github.mouse-ddalkkak:ddalkkak:v1.0.0' }
+dependencies { implementation 'com.github.mouse-ddalkkak:ddalkkak:v1.1.0' }
 ```
 
 검사할 앱이 없다면 문제를 일부러 심어 둔 [샘플 앱](examples/order-api)으로 해 볼 수 있습니다.
@@ -41,6 +41,7 @@ dependencies { implementation 'com.github.mouse-ddalkkak:ddalkkak:v1.0.0' }
 | `Port 7777 was already in use` 또는 `port is already allocated` | 이미지 이름 앞에 `-e SERVER_PORT=7788`을 넣어 다시 실행합니다. 검사할 앱에도 `DDALKKAK_URL=http://localhost:7788`을 넣습니다 |
 | `address already in use` (8000, 15432) | 이미지 이름 앞에 `-e AI_PORT=8001 -e DB_PORT=15433`을 넣어 다시 실행합니다 |
 | 검사가 `연결 확인`에서 멈춤 | 검사할 앱을 딸깍과 같은 컴퓨터에서 띄웁니다. WSL이나 다른 VM도 다른 컴퓨터로 봅니다 |
+| 허용했던 앱이 다시 켜질 때마다 연결 요청이 다시 뜸 | 스타터킷은 허용 때 받은 토큰을 `~/.ddalkkak-kit/`에 저장합니다. 앱을 띄우는 계정이 이 폴더에 쓸 수 있게 합니다. 딸깍을 v1.1.0으로 올린 뒤라면 스타터킷도 `v1.1.0`으로 올리고 한 번 다시 허용합니다. 다시 허용은 홈의 `딸깍 검사`에서 엽니다 |
 | AI 연결에서 `이 주소는 쓸 수 없어요` | 로컬 주소는 Ollama만 열려 있습니다. Docker Desktop에서는 `http://host.docker.internal:11434/v1`로 적습니다. 다른 로컬 서버는 이미지 이름 앞에 `-e AI_ALLOWED_HOSTS=localhost:11434,localhost:1234`를 넣습니다 |
 
 </details>

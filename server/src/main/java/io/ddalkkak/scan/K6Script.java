@@ -1,5 +1,6 @@
 package io.ddalkkak.scan;
 
+import java.net.URI;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -27,7 +28,15 @@ final class K6Script {
 	/** origin "http://localhost:8080" + "GET /api/orders/{id}" → "http://localhost:8080/api/orders/1" */
 	static String url(String origin, String api) {
 		String path = api.substring(api.indexOf(' ') + 1).replaceAll("\\{[^}/]*}", PATH_VALUE);
-		return origin + path;
+		return sameApp(origin, origin + path);
+	}
+
+	/** 경로가 호스트 자리를 바꾸지 못하게 — "@evil.host/x" 를 붙이면 "http://localhost:8080@evil.host/x" 가 되어 evil.host 로 간다 */
+	static String sameApp(String origin, String url) {
+		if (!URI.create(origin).getRawAuthority().equals(URI.create(url).getRawAuthority())) {
+			throw new IllegalArgumentException("검사 대상 앱 밖 주소: " + url);
+		}
+		return url;
 	}
 
 	static String method(String api) {

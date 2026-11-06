@@ -47,6 +47,9 @@ public class DdalkkakAgent implements ApplicationListener<ApplicationReadyEvent>
 
 	static final Duration HEARTBEAT_INTERVAL = Duration.ofSeconds(10);
 
+	/** 허용 때 받은 서비스 토큰을 싣는 헤더 (약속 ①, -211) */
+	static final String TOKEN_HEADER = "X-Ddalkkak-Token";
+
 	private final Environment environment;
 
 	private final ObjectProvider<CommandHandler> handlers;
@@ -71,10 +74,14 @@ public class DdalkkakAgent implements ApplicationListener<ApplicationReadyEvent>
 
 	private Map<String, CommandHandler> byType;
 
-	// 아래는 ddalkkak-agent 스레드에서만 읽고 쓴다 (serviceId · warned 는 측정 스레드도 send 로 읽는다)
+	private TokenStore tokens;
+
+	// 아래는 ddalkkak-agent 스레드에서만 읽고 쓴다 (serviceId · token · warned 는 측정 스레드도 send 로 읽는다)
 	private String requestId;
 
 	private volatile String serviceId;
+
+	private volatile String token;
 
 	private volatile boolean warned;
 
@@ -98,6 +105,11 @@ public class DdalkkakAgent implements ApplicationListener<ApplicationReadyEvent>
 			heartbeatInterval = environment.getProperty("ddalkkak.heartbeat-interval", Duration.class,
 					HEARTBEAT_INTERVAL);
 			hello = hello(event);
+			// 폴더는 시험이 임시 폴더로 바꾸려는 것이라 고객 안내에는 쓰지 않는다
+			String dir = environment.getProperty("ddalkkak.token-dir",
+					Path.of(System.getProperty("user.home"), ".ddalkkak-kit").toString());
+			tokens = new TokenStore(Path.of(dir), (String) hello.get("appName"), ((Number) hello.get("port")).intValue());
+			token = tokens.read();
 			byType = new HashMap<>();
 			handlers.orderedStream().forEach(h -> byType.putIfAbsent(h.type(), h));
 			schedule(Duration.ZERO);
@@ -178,6 +190,15 @@ public class DdalkkakAgent implements ApplicationListener<ApplicationReadyEvent>
 			schedule(retryInterval);
 			return;
 		}
+		if (reply.status() == 401) {
+			// 토큰이 틀림(다시 허용돼 바뀜 · 딸깍 DB 를 지움) → 버리고 hello 부터. 사람이 다시 허용하면 새 토큰이 온다
+			log.info("딸깍: 연결 토큰이 맞지 않아 연결 요청부터 다시 보내요");
+			token = null;
+			tokens.delete();
+			requestId = null;
+			schedule(retryInterval);
+			return;
+		}
 		Map<String, Object> answer = ok(reply);
 		if (answer == null) {
 			// 그 밖의 실패는 다음 생존 신호에서 다시
@@ -191,6 +212,10 @@ public class DdalkkakAgent implements ApplicationListener<ApplicationReadyEvent>
 		}
 		if (answer.get("serviceId") != null) {
 			serviceId = (String) answer.get("serviceId");
+		}
+		if (answer.get("token") instanceof String received && !received.equals(token)) {
+			token = received;
+			tokens.write(received);
 		}
 		Object commands = answer.get("commands");
 		if (commands instanceof List<?> list) {
@@ -242,11 +267,14 @@ public class DdalkkakAgent implements ApplicationListener<ApplicationReadyEvent>
 	/** 연결 실패면 null, 2xx 가 아니거나 본문을 못 읽으면 body 가 null (실패는 로그만) */
 	@SuppressWarnings("unchecked")
 	private Reply post(String path, Map<String, Object> body) throws InterruptedException {
-		HttpRequest request = HttpRequest.newBuilder(URI.create(url + path))
+		HttpRequest.Builder builder = HttpRequest.newBuilder(URI.create(url + path))
 			.timeout(Duration.ofSeconds(5))
-			.header("Content-Type", "application/json")
-			.POST(HttpRequest.BodyPublishers.ofString(Json.write(body)))
-			.build();
+			.header("Content-Type", "application/json");
+		String current = token;
+		if (current != null) {
+			builder.header(TOKEN_HEADER, current);
+		}
+		HttpRequest request = builder.POST(HttpRequest.BodyPublishers.ofString(Json.write(body))).build();
 		HttpResponse<String> response;
 		try {
 			response = http.send(request, HttpResponse.BodyHandlers.ofString());
