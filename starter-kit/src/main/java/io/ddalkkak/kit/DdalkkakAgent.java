@@ -1,6 +1,7 @@
 package io.ddalkkak.kit;
 
 import java.io.File;
+import java.io.IOException;
 import java.lang.management.ManagementFactory;
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -18,6 +19,9 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.jar.Attributes;
+import java.util.jar.JarFile;
+import java.util.jar.Manifest;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.springframework.beans.factory.DisposableBean;
@@ -326,7 +330,37 @@ public class DdalkkakAgent implements ApplicationListener<ApplicationReadyEvent>
 				environment.getProperty("server.port", Integer.class, 8080)));
 		body.put("pid", ProcessHandle.current().pid());
 		body.put("runningCommit", GitCommit.of(git.getIfAvailable(), DdalkkakAgent.class.getClassLoader()));
+		body.put("artifact", artifact(System.getProperty("java.class.path")));
+		body.put("workDir", Path.of("").toAbsolutePath().toString());
 		return body;
+	}
+
+	/**
+	 * 클래스패스가 실행 가능한(매니페스트에 {@code Main-Class} · {@code Start-Class}) {@code .jar} · {@code .war} 파일 하나면 그 절대
+	 * 경로, 아니면(IDE · bootRun · IntelliJ 가 만든 클래스패스용 jar) {@code null} (-224, !127 리뷰 1-3)
+	 */
+	static String artifact(String classPath) {
+		if (classPath == null || classPath.isBlank() || classPath.contains(File.pathSeparator)) {
+			return null;
+		}
+		String lower = classPath.toLowerCase(Locale.ROOT);
+		if (!lower.endsWith(".jar") && !lower.endsWith(".war")) {
+			return null;
+		}
+		try (JarFile jar = new JarFile(classPath)) {
+			Manifest manifest = jar.getManifest();
+			if (manifest == null) {
+				return null;
+			}
+			Attributes main = manifest.getMainAttributes();
+			if (main.getValue("Main-Class") == null && main.getValue("Start-Class") == null) {
+				return null;
+			}
+		}
+		catch (IOException ex) {
+			return null;
+		}
+		return Path.of(classPath).toAbsolutePath().toString();
 	}
 
 	private String appName(ApplicationReadyEvent event) {

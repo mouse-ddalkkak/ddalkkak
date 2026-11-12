@@ -5,12 +5,14 @@ import { keepOffChoices, noCode, turnOn, type Added } from '../../utils/scopePar
 import { AddDialog, EditDialog } from './ScopeDialog'
 import { syncEstimate } from './syncEstimate'
 import { useLoad } from '../../hooks/useLoad'
-import { useKeys } from '../../hooks/useKeys'
 import { pressable } from '../../utils/keys'
 import PageTitle from '../../components/PageTitle'
 import Button from '../../components/Button'
+import RunBusyDialog from '../../components/RunBusyDialog'
+import { ApiError } from '../../api/client'
 import Checkbox from '../../components/Checkbox'
 import Switch from './Switch'
+import AuthBar from './AuthBar'
 import { AREA_NAME } from '../../utils/score'
 import s from './Scope.module.css'
 
@@ -35,13 +37,11 @@ export default function Scope({ runId }: { runId: string }) {
   const { data, setData } = useLoad(() => getScope(runId), [runId])
   const [info, setInfo] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [runBusy, setRunBusy] = useState(false)
   const [dialog, setDialog] = useState<{ edit: ScopeItem } | { add: Area } | null>(null)
   const { showMessage } = useApp()
   // "+ 추가" 대상 후보 — 이번 회차 API 목록 (-179). 실패하면 후보만 비고 자유 입력은 그대로 (맞는지는 서버 NO_TARGET)
   const apis = useLoad(() => getPrepareApis(runId), [runId]).data?.apis.map((a) => a.api) ?? []
-  // ESC 이전(코드 연결) · ENTER 딸깍. 팝업이 열려 있으면 팝업 몫 (useKeys)
-  const enter = useRef(() => {})
-  useKeys({ Escape: () => (location.hash = '#/code'), Enter: () => enter.current() })
   // 스위치 · 카드 토글 뒤 "예상 약 M분"은 서버 estimate로 (화면은 계산하지 않는다). 선택은 화면 값 그대로 두고 estimate만 바꾼다
   const sync = useRef<ReturnType<typeof syncEstimate<ScopeData>>>(null)
   sync.current ??= syncEstimate<ScopeData>({
@@ -100,13 +100,11 @@ export default function Scope({ runId }: { runId: string }) {
       await putScope(runId, data)
       const res = await startRun(runId)
       location.hash = `#/runs/${encodeURIComponent(res.runId)}/progress`
-    } catch {
+    } catch (e) {
+      // 다른 검사가 돌고 있음 → 하단 바 대신 팝업 (-214)
+      if (e instanceof ApiError && e.code === 'RUN_IN_PROGRESS') setRunBusy(true)
       setBusy(false)
     }
-  }
-  enter.current = () => {
-    if (count === 0) showMessage('항목을 하나 이상 골라 주세요')
-    else if (!busy) go()
   }
 
   return (
@@ -120,6 +118,7 @@ export default function Scope({ runId }: { runId: string }) {
           </Checkbox>
         }
       />
+      <AuthBar runId={runId} />
       {data.parts.map((p) => {
         const tools = [...new Set(p.items.map((i) => i.tool))]
         return (
@@ -216,8 +215,8 @@ export default function Scope({ runId }: { runId: string }) {
           onClose={() => setDialog(null)} onAdd={(added) => save(data, [added], '시나리오를 추가했어요')} />
       )}
       <div className={s.foot}>
-        <Button variant="text" arrow={false} onClick={() => (location.hash = '#/code')}>
-          ← 이전 (코드 연결)
+        <Button variant="text" arrow={false} onClick={() => (location.hash = '#/')}>
+          ← 이전
         </Button>
         <span className={s.grow} />
         <span className={s.estimate}>
@@ -227,6 +226,7 @@ export default function Scope({ runId }: { runId: string }) {
           딸깍
         </Button>
       </div>
+      {runBusy && <RunBusyDialog onClose={() => setRunBusy(false)} />}
     </div>
   )
 }

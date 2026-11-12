@@ -2,8 +2,9 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState, ty
 import { setHandlers } from '../api/client'
 import { getMe } from '../api/auth'
 import { getAiSettings, type AiSettings } from '../api/ai'
+import type { Home } from '../api/home'
 
-// 공유 상태: 로그인 사용자 · AI 표시 · 하단 바 메시지 (docs/web.md §4)
+// 공유 상태: 로그인 사용자 · AI 표시 · 홈 데이터 · 하단 바 메시지 (docs/web.md §4)
 type Ctx = {
   user: string | null
   /** null = 아직 응답 전 → 상단 바 "AI 확인 중…" */
@@ -11,6 +12,9 @@ type Ctx = {
   /** 로그인 확인 뒤(앱 시작 auth/me 성공 · 0-2 로그인 성공) 사용자 · AI 표시를 다시 채운다 */
   loadSession: () => Promise<void>
   setAi: (ai: AiSettings) => void
+  /** GET /api/home — 상단 바가 10초마다 받아 둔다(검사 상태 칩 · 1 홈 · 5 서버 상태). 받기 전엔 undefined */
+  home: Home | undefined
+  setHome: (home: Home) => void
   clearSession: () => void
   message: string | null
   showMessage: (text: string, opts?: { sticky?: boolean }) => void
@@ -26,6 +30,7 @@ const MESSAGE_MS = 1800 // screens.md §3
 export function AppProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<string | null>(null)
   const [ai, setAi] = useState<AiSettings | null>(null)
+  const [home, setHome] = useState<Home>()
   const [temp, setTemp] = useState<string | null>(null)
   const [sticky, setSticky] = useState<string | null>(null)
   const timer = useRef<number>(undefined)
@@ -55,6 +60,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const clearSession = useCallback(() => {
     setUser(null)
     setAi(null)
+    setHome(undefined)
   }, [])
 
   // 래퍼 ↔ Context 연결: 처음 그려질 때 한 번 (§3)
@@ -67,7 +73,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   return (
     <AppCtx.Provider
-      value={{ user, ai, loadSession, setAi, clearSession, message: temp ?? sticky, showMessage, clearMessage }}
+      value={{ user, ai, loadSession, setAi, home, setHome, clearSession, message: temp ?? sticky, showMessage, clearMessage }}
     >
       {children}
     </AppCtx.Provider>

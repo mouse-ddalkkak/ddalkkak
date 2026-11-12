@@ -1,25 +1,20 @@
 import { useApp } from '../app/AppContext'
-import KeyHint from './KeyHint'
 import BlinkCursor from './BlinkCursor'
 import s from './BottomBar.module.css'
 
-/** 하단 바: 키 힌트(키 동작은 화면의 useKeys) + 시스템 메시지. 홈은 메시지가 없으면 PRESS ENTER */
-export default function BottomBar({ hints, home }: { hints: [string, string][]; home: boolean }) {
+/** 하단 바: 시스템 메시지. 바는 페이지 맨 아래에 두고(-212) 메시지만 창 아래에 띄운다(-139) */
+export default function BottomBar() {
   const { message } = useApp()
-  const text = message ?? (home ? 'PRESS ENTER' : null)
   return (
     <footer className={s.footer}>
       <div className={s.inner}>
-        {hints.map(([keys, label]) => (
-          <KeyHint key={label} keys={keys.split(' ')} label={label} />
-        ))}
         <span className={s.grow} />
-        {text && (
+        {message && (
           <span className={s.msg} role="status">
             <span className={s.cursor}>
               <BlinkCursor />
             </span>
-            {text}
+            {message}
           </span>
         )}
       </div>

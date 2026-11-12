@@ -1,3 +1,3 @@
 .track{position:absolute;left:0;right:0;bottom:44px;height:0;pointer-events:none;overflow:visible;z-index:2}
-.sprite{flex:none;background-size:400% 100%;background-repeat:no-repeat;image-rendering:pixelated;animation:ttk-walk var(--dur-walk) steps(4) infinite}
-.ham{position:absolute;bottom:0;left:-160px;background-size:400% 100%;background-repeat:no-repeat;image-rendering:pixelated;animation:ttk-run var(--dur-run) linear infinite,ttk-walk var(--dur-walk) steps(4) infinite}
+.sprite{flex:none;background-size:400% 100%;background-repeat:no-repeat;image-rendering:pixelated;animation:global(ttk-walk) var(--dur-walk) steps(4) infinite}
+.ham{position:absolute;bottom:0;left:-160px;background-size:400% 100%;background-repeat:no-repeat;image-rendering:pixelated;animation:global(ttk-run) var(--dur-run) linear infinite,global(ttk-walk) var(--dur-walk) steps(4) infinite}

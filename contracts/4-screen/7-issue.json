@@ -51,6 +51,7 @@
             "alternative": "자주 쓰는 결과는 캐시"
           },
           "passCriteria": "p95 500ms 이내 · 오류율 1% 이하",
+          "penalty": 10,
           "code": {
             "file": "src/main/java/com/shop/order/OrderController.java",
             "line": 12,
@@ -113,6 +114,7 @@
             "alternative": "JPA 메서드 쿼리로 바꾸기"
           },
           "passCriteria": "ZAP SQL 인젝션 경고 0건",
+          "penalty": 30,
           "api": "GET /api/orders",
           "code": null,
           "evidence": [
@@ -156,7 +158,7 @@
       },
       "responses": {
         "200": {
-          "text": "Spring Boot 3.2에서 아래 3개 문제를 고쳐 주세요.\n\n① [보안 · 위험] 검색어 하나로 모든 주문이 보여요 — GET /api/orders · OrderRepository.java:31 · 검색어 ' OR 1=1 -- 입력 시 전체 주문 뚫림 → 막힘\n② [코드 품질 · 주의] 결제 오류를 조용히 삼켜요 — PaymentService.java:113 · 빈 catch 블록 1곳 → 0곳\n③ [성능 · 주의] 주문 목록이 DB를 반복 호출해요 — GET /api/orders · OrderService.java:48 · 느린 요청 p95 · 50명 487ms → 500ms 이내\n\n고치는 순서: ① → ② → ③\n요구사항: 항목별 원인 확인 → 수정 → 회귀 테스트 · 서로 영향 주는 변경은 먼저 알려 주세요"
+          "text": "Spring Boot 3.2에서 아래 3개 문제를 고쳐 주세요.\n\n① [보안 · 위험] 검색어 하나로 모든 주문이 보여요 — GET /api/orders · OrderRepository.java:31 · 검색어 ' OR 1=1 -- 입력 시 전체 주문 뚫림 → 막힘\n② [코드 품질 · 주의] 결제 오류를 조용히 삼켜요 — PaymentService.java:113 · 빈 catch 블록 1곳 → 0곳\n③ [성능 · 주의] 주문 목록이 DB를 반복 호출해요 — GET /api/orders · OrderService.java:48 · 느린 요청 p95 · 50명 487ms → 500ms 이내 · 정황: 요청당 DB 쿼리 1,240회(N+1 의심)\n\n고치는 순서: ① → ② → ③\n요구사항: 항목별 원인 확인 → 수정 → 회귀 테스트 · 서로 영향 주는 변경은 먼저 알려 주세요"
         },
         "400": {
           "code": "NO_ITEMS",

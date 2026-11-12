@@ -11,3 +11,11 @@
 .checking{display:flex;align-items:center;gap:10px;font:var(--type-small);letter-spacing:1px;color:var(--cyan-300);white-space:nowrap}
 .ok{font:var(--type-small);letter-spacing:1px;color:var(--green-400)}
 .err{font:var(--type-small);letter-spacing:1px;color:var(--coral-400)}
+/* 모델 셀렉트 — Input과 같은 틀(4px 테두리 · "> ") (-213) */
+.selectField{display:flex;align-items:center;gap:12px;padding:10px 12px;border:4px solid var(--ink-50);background:var(--ink-900)}
+.selectField:focus-within{border-color:var(--cyan-300)}
+.prompt{font:var(--type-body);color:var(--red-500)}
+.select{flex:1;min-width:0;border:0;outline:0;padding:0;background:var(--ink-900);color:var(--white);font:var(--type-caption);letter-spacing:1px;cursor:pointer}
+.labelRow{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.link{appearance:none;margin:0;padding:0;border:0;background:transparent;color:var(--cyan-300);font:var(--type-small);letter-spacing:1px;text-decoration:underline;cursor:pointer}
+.link:hover{color:var(--white)}

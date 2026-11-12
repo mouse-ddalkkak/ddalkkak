@@ -19,6 +19,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -31,7 +32,7 @@ import tools.jackson.databind.json.JsonMapper;
  * 보안 시나리오(tool zap) 하나를 ZAP Automation Framework 로 돌려 raw_result 한 줄로 남긴다 (docs/scan.md §4 · F-RUN-05).
  * <p>
  * 그 시나리오의 api 하나만 담은 최소 OpenAPI 와 계획 YAML(replacer · openapi · activeScan · report)을 out 에 쓰고 zaproxy/zap-stable 을
- * 띄운다. 테스트 계정 토큰은 replacer 로 Authorization 헤더에 싣고, 토큰이 든 계획은 실행 뒤 지운다. evidence 에는 alert 이름 · 위험도 ·
+ * 띄운다. 로그인 값은 replacer 로 그 헤더(Authorization · Cookie)에 싣고, 값이 든 계획은 실행 뒤 지운다. evidence 에는 alert 이름 · 위험도 ·
  * 메서드+경로 템플릿 · 개수만 쓴다 — 공격 uri · 값 · 응답 조각은 외부 LLM 으로 가면 안 된다(!60 B3 확인, -142)
  */
 @Service
@@ -96,9 +97,9 @@ public class ZapRunner {
 	/**
 	 * @param runId "run_5". 없는 회차면 ApiException(NOT_FOUND)
 	 * @param item 약속 ② 보안 시나리오 (tool zap) · params.range
-	 * @param token 테스트 계정 토큰. 없으면 null
+	 * @param login 이 회차의 고객 앱 로그인 (설정 전이면 {@link ScanLogin#NONE})
 	 */
-	public RawReport.Result run(String runId, ScenarioStore.Item item, String token) {
+	RawReport.Result run(String runId, ScenarioStore.Item item, ScanLogin login) {
 		RawResultRow row = writer.start(runId, item);
 		RunLookup.Info run = runs.find(runId).orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND));
 		Path plan = null;
@@ -107,15 +108,17 @@ public class ZapRunner {
 			if (item.api() == null) {
 				return writer.skip(row, "대상 없음");
 			}
-			if (token == null && probe.needsLogin(item.api(), port)) {
+			ApiCatalog.Endpoint endpoint = endpoint(run, item.api());
+			Optional<LoginProbe.Use> use = probe.allowed(item.api(), port, endpoint == null ? List.of() : endpoint.params(), login);
+			if (use.isEmpty()) {
 				writer.append(row, List.of("== " + item.key() + " " + item.api() + " · 로그인 필요 → " + K6Runner.NO_ACCOUNT));
 				return writer.skip(row, K6Runner.NO_ACCOUNT);
 			}
 			Path out = writer.outDir(runId);
 			Strength strength = RANGES.getOrDefault(range(item), RANGES.get("default"));
-			Files.writeString(out.resolve("openapi.json"), openapi(item.api(), port, endpoint(run, item.api())), UTF_8);
+			Files.writeString(out.resolve("openapi.json"), openapi(item.api(), port, endpoint), UTF_8);
 			plan = out.resolve("plan.yaml");
-			Files.writeString(plan, plan(target.origin(port), token, strength), UTF_8);
+			Files.writeString(plan, plan(target.origin(port), use.get().credential(), strength), UTF_8);
 			Path report = out.resolve("zap.json");
 			Files.deleteIfExists(report);
 
@@ -135,7 +138,7 @@ public class ZapRunner {
 				try {
 					List<String> lines = new ArrayList<>();
 					lines.add("== " + item.key() + " " + item.api() + " · 멈춤 → " + SemgrepRunner.HALTED);
-					r.lines().forEach(line -> lines.add(token == null ? line : line.replace(token, "****")));
+					r.lines().forEach(line -> lines.add(login.mask(line)));
 					writer.append(row, lines);
 					return writer.skip(row, SemgrepRunner.HALTED);
 				}
@@ -144,10 +147,15 @@ public class ZapRunner {
 				}
 			}
 			List<String> lines = new ArrayList<>();
-			lines.add("== " + item.key() + " " + item.api() + " · exit=" + r.exitCode());
+			boolean pullFailed = r.failure() == DockerTool.Failure.PULL;
+			lines.add("== " + item.key() + " " + item.api() + " · exit=" + r.exitCode()
+					+ (pullFailed ? " · 받기 실패 → " + K6Runner.PULL_FAILED : ""));
 			// 원본 로그에도 토큰은 남기지 않는다
-			r.lines().forEach(line -> lines.add(token == null ? line : line.replace(token, "****")));
+			r.lines().forEach(line -> lines.add(login.mask(line)));
 			writer.append(row, lines);
+			if (pullFailed) {
+				return writer.skip(row, K6Runner.PULL_FAILED);
+			}
 			if (!Files.exists(report)) {
 				// Automation Framework 는 앞 job 이 실패하면 report 를 안 돌린다 (-160) — 원인은 원본 로그의 "Automation plan failures:"
 				return writer.skip(row, K6Runner.TOOL_ERROR);
@@ -155,6 +163,9 @@ public class ZapRunner {
 			try {
 				parse(row, item.api(), json.readTree(Files.readString(report, UTF_8)).required("site"));
 				row.passed = json.writeValueAsString(passed(lines, row.findings));
+				// alert 근거에 요청 쿠키 · 헤더가 실려 올 수 있다
+				row.findings = login.mask(row.findings);
+				row.evidence = login.mask(row.evidence);
 			}
 			catch (JacksonException | IllegalArgumentException e) {
 				return writer.skip(row, K6Runner.PARSE_ERROR);
@@ -168,7 +179,7 @@ public class ZapRunner {
 		finally {
 			if (plan != null) {
 				try {
-					Files.deleteIfExists(plan); // 토큰이 들어 있다
+					Files.deleteIfExists(plan); // 로그인 값이 들어 있다
 				}
 				catch (IOException ignored) {
 					// 다음 검사가 같은 자리에 다시 쓴다
@@ -231,14 +242,18 @@ public class ZapRunner {
 		}
 	}
 
-	/** 계획 YAML: replacer(토큰이 있을 때) → openapi → activeScan → passiveScan-wait → report → outputSummary */
-	static String plan(String origin, String token, Strength s) {
+	/** 계획 YAML: replacer(검사 표시 · 로그인 값이 있으면 그 헤더) → openapi → activeScan → passiveScan-wait → report → outputSummary */
+	static String plan(String origin, ScanLogin.Credential credential, Strength s) {
 		StringBuilder y = new StringBuilder();
 		y.append("env:\n  contexts:\n    - name: ddalkkak\n      urls: [\"").append(origin).append("\"]\njobs:\n");
-		if (token != null) {
-			y.append("  - type: replacer\n    rules:\n      - description: test-account\n        matchType: REQ_HEADER\n")
-				.append("        matchString: Authorization\n        matchRegex: false\n        replacementString: \"Bearer ")
-				.append(token.replace("\"", "")).append("\"\n");
+		// 검사 표시는 늘 (-246). REQ_HEADER 규칙은 헤더가 없으면 더하고 있으면 바꾼다 — 스타터킷이 ZAP 요청을 호출 수에 세지 않게
+		y.append("  - type: replacer\n    rules:\n      - description: scan-traffic\n        matchType: REQ_HEADER\n")
+			.append("        matchString: ").append(K6Script.SCAN_HEADER).append("\n        matchRegex: false\n        replacementString: \"")
+			.append(K6Script.SCAN_VALUE).append("\"\n");
+		if (credential != null) {
+			y.append("      - description: test-account\n        matchType: REQ_HEADER\n")
+				.append("        matchString: ").append(credential.header()).append("\n        matchRegex: false\n        replacementString: \"")
+				.append(credential.value().replace("\"", "")).append("\"\n");
 		}
 		y.append("  - type: openapi\n    parameters:\n      apiFile: /zap/wrk/openapi.json\n      targetUrl: ")
 			.append(origin).append("\n");

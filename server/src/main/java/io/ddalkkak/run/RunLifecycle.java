@@ -63,8 +63,56 @@ public class RunLifecycle {
 		left.forEach(run -> {
 			run.status = RunStatus.STOPPED.value();
 			run.finishedAt = now;
+			// 점수 없는 회차를 홈이 '검사 완료'(done)로 보내지 않게 본 것으로 둔다 (-214, !133 리뷰). 홈은 '이어서 검사할까요?'(interrupted, -228)
+			run.resultSeenAt = now;
+			// 사용자가 중단 · 여기까지를 고른 뒤 결과 정리 중에 꺼졌으면 묻지 않는다 — 이어서 하면 일부러 멈춘 시나리오를 다시 돌린다 (!143 리뷰 3-3)
+			run.interruptedAt = run.stopChosenAt == null ? now : null;
 		});
 		runs.saveAll(left);
+	}
+
+	/**
+	 * 딸깍이 다시 켜져 멈춘 채 이어서 할지 기다리는 회차인지 (-228): stopped · interruptedAt 이 있고 그 서비스의 마지막 끝난 회차.
+	 * 그 뒤에 다른 검사가 끝났으면 아니다 — 홈은 마지막 회차만 묻는다
+	 */
+	public boolean interrupted(String runId) {
+		return waiting(runId).isPresent();
+	}
+
+	/**
+	 * 이어서 검사 · 여기까지 결과 보기 (-228): 멈춘 회차를 다시 running 으로. 끝 시각 · 본 시각 · 멈춘 시각을 비우고 B3 가 검사 스레드를
+	 * 띄우기 전에 저장한다(onScanFinished 가 running 을 확인한다). 기다리는 회차가 아니면 NOT_FOUND, 같은 서비스가 검사 중이면
+	 * RUN_IN_PROGRESS
+	 */
+	public synchronized void resume(String runId) {
+		Run run = waiting(runId).orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND));
+		if (runs.countByServiceIdAndStatusIn(run.serviceId, List.of(RunStatus.RUNNING.value())) > 0) {
+			throw new ApiException(ErrorCode.RUN_IN_PROGRESS);
+		}
+		run.status = RunStatus.RUNNING.value();
+		run.finishedAt = null;
+		run.resultSeenAt = null;
+		run.interruptedAt = null;
+		run.stopChosenAt = null;
+		run.resumedAt = LocalDateTime.now();
+		runs.save(run);
+	}
+
+	/**
+	 * 사용자가 중단 · 여기까지를 골랐다 (B3 ScanRunner, !143 리뷰 3-3). 결과 정리(AI 해석) 중에 딸깍이 다시 켜져도 그 회차는 이어서 할지 묻지
+	 * 않고 stopped 로 둔다. 도는 회차가 아니면 아무것도 하지 않는다
+	 */
+	public void stopChosen(String runId) {
+		Optional.ofNullable(Run.idOf(runId)).ifPresent(id -> runs.markStopChosen(id, LocalDateTime.now()));
+	}
+
+	private Optional<Run> waiting(String runId) {
+		return Optional.ofNullable(Run.idOf(runId))
+			.flatMap(runs::findById)
+			.filter(run -> RunStatus.STOPPED.value().equals(run.status) && run.interruptedAt != null)
+			.filter(run -> runs.findFirstByServiceIdAndStatusInOrderByIdDesc(run.serviceId, RunResults.ENDED)
+				.map(last -> last.id.equals(run.id))
+				.orElse(false));
 	}
 
 	/**

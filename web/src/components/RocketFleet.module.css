@@ -1,3 +1,3 @@
 .fleet{position:absolute;inset:0;z-index:0;pointer-events:none}
-.ship{position:absolute;top:110%;animation:ttk-fly linear infinite}
-.img{display:block;width:100%;animation:ttk-sway var(--dur-sway) steps(2) infinite}
+.ship{position:absolute;top:110%;animation:global(ttk-fly) linear infinite}
+.img{display:block;width:100%;animation:global(ttk-sway) var(--dur-sway) steps(2) infinite}

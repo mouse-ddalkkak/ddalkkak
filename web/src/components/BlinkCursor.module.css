@@ -1,2 +1,2 @@
-.cursor{display:inline-block;width:14px;height:24px;flex:none;background:var(--white);animation:ttk-blink var(--dur-blink) steps(1) infinite}
-.small{display:inline-block;width:10px;height:16px;background:var(--ink-300);animation:ttk-blink var(--dur-blink) steps(1) infinite}
+.cursor{display:inline-block;width:14px;height:24px;flex:none;background:var(--white);animation:global(ttk-blink) var(--dur-blink) steps(1) infinite}
+.small{display:inline-block;width:10px;height:16px;background:var(--ink-300);animation:global(ttk-blink) var(--dur-blink) steps(1) infinite}

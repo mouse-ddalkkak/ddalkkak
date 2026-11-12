@@ -1,4 +1,5 @@
 """LLM이 만든 항목을 믿지 않고 거른다: 받은 API 목록에 없는 주소는 빼고, 숫자는 범위 안으로 고친다 (F-PLAN-03)"""
+from .defaults import FAIL_ERROR_RATE, FAIL_P95_MS
 
 SHAPES = ("constant", "ramp", "spike", "step")
 RANGES = ("default", "wide", "full")
@@ -28,8 +29,8 @@ def clamp_params(tool: str, params: dict) -> dict:
             "usersFrom": min(start, end), "usersTo": max(start, end),
             "durationMin": _int(params.get("durationMin"), 1, 30, 3),
             "shape": shape if shape in SHAPES else "ramp",
-            "failP95Ms": int(_number(params.get("failP95Ms"), 1, 600000, 500)),
-            "failErrorRate": _number(params.get("failErrorRate"), 0.0, 1.0, 0.01),
+            "failP95Ms": int(_number(params.get("failP95Ms"), 1, 600000, FAIL_P95_MS)),
+            "failErrorRate": _number(params.get("failErrorRate"), 0.0, 1.0, FAIL_ERROR_RATE),
         }
     if tool == "zap":
         return {"range": params.get("range") if params.get("range") in RANGES else "default"}

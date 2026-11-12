@@ -1,44 +1,53 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { getResult, makePrompt, retryReport, type Issue } from '../../api/runs'
 import { useLoad } from '../../hooks/useLoad'
-import { useKeys } from '../../hooks/useKeys'
 import { pressable } from '../../utils/keys'
 import { useApp } from '../../app/AppContext'
 import Button from '../../components/Button'
+import RunBusyDialog from '../../components/RunBusyDialog'
+import { useScan } from '../../hooks/useScan'
+import ProjectName from '../../components/ProjectName'
 import PromptBox from '../../components/PromptBox'
-import { AREAS, AREA_NAME, scoreColor, scoreText } from '../../utils/score'
+import { AREAS, AREA_NAME, scoreBasis, scoreColor, scoreText } from '../../utils/score'
 import { koDateTime } from '../../utils/format'
+import { runOnce } from '../../utils/busy'
+import { sessionMemory } from '../../utils/promptMemory'
 import s from './Result.module.css'
 
-// 6 결과 — 행 "자세히" → 7 · 재검사 → #/code(2-b) · 이력 탭 → 8
+// 6 결과 — 맨 위 이름은 프로젝트 이름(✎로 고침, F-HIST-05). 행 "자세히" → 7 · 재검사 → 저장한 코드 연결로 바로 준비(-245) · 이력 탭 → 8
+// 담은 문제 · 마지막 묶음 프롬프트는 회차별로 sessionStorage에 두어 7에 갔다 와도 남는다 (-216)
+const memory = sessionMemory()
+
 export default function Result({ runId }: { runId: string }) {
   const { showMessage } = useApp()
   const { data, setData } = useLoad(() => getResult(runId), [runId])
-  const [sel, setSel] = useState<string[]>([])
+  const [sel, setSel] = useState<string[]>(() => memory.result(runId).sel)
   const [open, setOpen] = useState<Record<string, boolean>>({})
-  const [prompt, setPrompt] = useState<{ ids: string[]; text: string } | null>(null)
+  const [prompt, setPrompt] = useState<{ ids: string[]; text: string } | null>(() => memory.result(runId).prompt)
   const [retrying, setRetrying] = useState(false)
-  // ESC 홈 · ENTER 프롬프트 만들기 (F-HOME-05)
-  const enter = useRef(() => {})
-  useKeys({ Escape: () => (location.hash = '#/'), Enter: () => enter.current() })
+  // 생성 요청 중: 버튼을 막고 "생성 중…". 다시 그리기 전 두 번째 클릭은 ref가 막는다
+  const [busy, setBusy] = useState(false)
+  const inFlight = useRef(false)
+  useEffect(() => memory.saveResult(runId, { sel, prompt }), [runId, sel, prompt])
+  const scan = useScan()
   if (!data) return null
 
   const toggle = (ids: string[], on: boolean) => setSel((x) => (on ? [...new Set([...x, ...ids])] : x.filter((i) => !ids.includes(i))))
-  // 담은 순서가 아니라 결과 화면 순서(위험 → 주의)로 보낸다
+  // 담은 순서가 아니라 결과 화면 순서(위험 → 주의)로 보낸다. 되살린 sel에 지금 결과에 없는 id(다시 해석 뒤)가 있어도 개수 · 요청은 이것 기준
   const ordered = data.issues.filter((i) => sel.includes(i.id)).map((i) => i.id)
 
-  const make = async (again = false) => {
-    const ids = again && prompt ? prompt.ids : ordered
-    if (ids.length === 0) return showMessage('항목을 하나 이상 골라 주세요')
-    try {
-      const r = await makePrompt(runId, ids)
-      setPrompt({ ids, text: r.text })
-      if (again) showMessage('다시 생성했어요')
-    } catch {
-      // 래퍼가 문구를 띄웠다
-    }
-  }
-  enter.current = () => make()
+  const make = (again = false) =>
+    runOnce(inFlight, setBusy, async () => {
+      const ids = again && prompt ? prompt.ids : ordered
+      if (ids.length === 0) return showMessage('항목을 하나 이상 골라 주세요')
+      try {
+        const r = await makePrompt(runId, ids)
+        setPrompt({ ids, text: r.text })
+        if (again) showMessage('다시 생성했어요')
+      } catch {
+        // 래퍼가 문구를 띄웠다. 생성 중 표시만 풀린다
+      }
+    })
 
   // 다시 해석 — 성공하면 응답(다시 해석한 결과)으로 바꾼다. 503 문구는 래퍼가 띄웠다
   const retry = async () => {
@@ -63,6 +72,9 @@ export default function Result({ runId }: { runId: string }) {
           <span className={s.rowTech}>
             {i.tech} · 지금 {i.asIs.value} → 목표 <span className={s.tobe}>{i.toBe.value}</span>
           </span>
+          <span className={s.rowTech}>
+            <span className={s.penalty}>−{i.penalty}점</span> · 통과 기준 {i.passCriteria}
+          </span>
         </div>
         <button type="button" className={s.pick} data-on={on ? '' : undefined} onClick={() => toggle([i.id], !on)}>
           {on ? '✓ 프롬프트에 담김' : '+ 프롬프트에 담기'}
@@ -78,12 +90,14 @@ export default function Result({ runId }: { runId: string }) {
     <div className={s.wrap}>
       <div className={s.head}>
         <div className={s.headText}>
-          <h1 className={s.service}>{data.service}</h1>
+          <h1 className={s.service}>
+            <ProjectName runId={runId} name={data.projectName} onSaved={(projectName) => setData((d) => d && { ...d, projectName })} />
+          </h1>
           <span className={s.meta}>
             {koDateTime(data.at)} 검사 · 소요 {data.durationMin}분 · 시나리오 {data.scenarioCount} · 검사 항목 {data.itemCount}
           </span>
         </div>
-        <Button onClick={() => (location.hash = '#/code')} className={s.rescan}>
+        <Button onClick={() => scan.scan()} className={s.rescan}>
           재검사
         </Button>
       </div>
@@ -122,7 +136,7 @@ export default function Result({ runId }: { runId: string }) {
 
       <div className={s.cart}>
         <div className={s.cartHead}>
-          <span className={s.cartTitle}>프롬프트에 담은 문제 {sel.length}개</span>
+          <span className={s.cartTitle}>프롬프트에 담은 문제 {ordered.length}개</span>
           <button type="button" className={s.link} onClick={() => toggle(data.issues.map((i) => i.id), true)}>
             모두 담기
           </button>
@@ -130,11 +144,11 @@ export default function Result({ runId }: { runId: string }) {
             모두 빼기
           </button>
           <span className={s.grow} />
-          <Button onClick={() => make()} className={s.make}>
-            담은 {sel.length}개로 프롬프트 만들기
+          <Button onClick={() => make()} className={s.make} disabled={busy || ordered.length === 0}>
+            {busy ? '생성 중…' : `담은 ${ordered.length}개로 프롬프트 만들기`}
           </Button>
         </div>
-        {prompt && <PromptBox title="묶음 수정 프롬프트" badge={`${prompt.ids.length}개 항목`} text={prompt.text} onRegen={() => make(true)} />}
+        {prompt && <PromptBox title="묶음 수정 프롬프트" badge={`${prompt.ids.length}개 항목`} text={prompt.text} onRegen={() => make(true)} busy={busy} />}
       </div>
 
       {AREAS.map((a) => {
@@ -155,6 +169,7 @@ export default function Result({ runId }: { runId: string }) {
               <div className={s.areaText}>
                 <span className={s.areaName}>{AREA_NAME[a]}</span>
                 <span className={s.areaLine}>{v == null ? `미검사${sum.skipReason ? ` · ${sum.skipReason}` : ''}` : sum.line}</span>
+                {v != null && <span className={s.basis}>점수 근거 {scoreBasis(issues.map((i) => i.penalty), v)}</span>}
               </div>
               <span className={s.areaCount}>
                 <span className={s.fix}>고칠 점 {issues.length}</span> · 통과 {sum.pass}
@@ -214,6 +229,7 @@ export default function Result({ runId }: { runId: string }) {
           </section>
         )
       })}
+      {scan.busy && <RunBusyDialog onClose={scan.closeBusy} />}
     </div>
   )
 }

@@ -77,11 +77,11 @@ class RunResults {
 	record NameValue(String name, String value) {
 	}
 
-	record CodeRef(String type, String commit) {
+	record CodeRef(String type, String commit, String ref, String fileHash) {
 	}
 
-	/** 약속 ④ RunResult */
-	record RunResult(String runId, String service, OffsetDateTime at, int durationMin, int scenarioCount,
+	/** 약속 ④ RunResult. service = 그 회차의 서비스 이름(지금 연결된 서비스가 아님, -223) */
+	record RunResult(String runId, String projectName, String service, OffsetDateTime at, int durationMin, int scenarioCount,
 			int itemCount, String status, CodeRef codeSource, RunHistory.Scores scores,
 			Map<String, Report.AreaSummary> summary, List<Report.Issue> issues, List<Report.Passed> passed,
 			ApiError reportError) {
@@ -100,7 +100,7 @@ class RunResults {
 			ReproCondition repro, String prev, String next) {
 	}
 
-	record Entry(String runId, OffsetDateTime at, String status, List<String> tags, int scenarioCount,
+	record Entry(String runId, String projectName, OffsetDateTime at, String status, List<String> tags, int scenarioCount,
 			String codeSource, RunHistory.Scores scores, int fixCount) {
 	}
 
@@ -110,6 +110,13 @@ class RunResults {
 
 	record RunList(int total, List<Entry> runs, Trend trend) {
 	}
+
+	/** PATCH /api/runs/{id} 응답 */
+	record Renamed(String runId, String projectName) {
+	}
+
+	/** 프로젝트 이름 최대 길이 — 서비스 이름(service.name VARCHAR(100))과 같다. 화면 cleanProjectName 과 같이 UTF-16 길이로 센다 */
+	static final int PROJECT_NAME_MAX = 100;
 
 	private final RunRepository runs;
 
@@ -268,9 +275,12 @@ class RunResults {
 		if (result == null || result.findings() == null) {
 			return Optional.empty();
 		}
-		String rule = row.tech != null && row.tech.startsWith("semgrep ") ? row.tech.substring("semgrep ".length()) : null;
+		// ruleId(③ 내부용, -247)가 있으면 그 규칙의 발견만 본다 — 없으면 다른 규칙 위치를 붙이지 않고 위치 없음.
+		// 이전 회차(ruleId 없음)는 tech "semgrep <ruleId>"로 좁히고, 그것도 안 맞으면 항목 첫 발견
+		String rule = row.ruleId != null ? row.ruleId
+				: row.tech != null && row.tech.startsWith("semgrep ") ? row.tech.substring("semgrep ".length()) : null;
 		List<RawReport.Finding> mine = result.findings().stream().filter(f -> Objects.equals(f.ruleId(), rule)).toList();
-		List<RawReport.Finding> findings = mine.isEmpty() ? result.findings() : mine;
+		List<RawReport.Finding> findings = mine.isEmpty() && row.ruleId == null ? result.findings() : mine;
 		for (String severity : List.of("error", "warning")) {
 			Optional<RawReport.Finding> finding = findings
 				.stream()
@@ -434,6 +444,8 @@ class RunResults {
 		row.cause = issue.cause();
 		row.fix = jsonText(issue.fix());
 		row.passCriteria = issue.passCriteria();
+		row.penalty = issue.penalty();
+		row.ruleId = issue.ruleId();
 		return row;
 	}
 
@@ -449,6 +461,10 @@ class RunResults {
 	/** 6 결과 요약 (8 · 1 "지난 결과"도 같은 것). 없거나 아직 안 끝난 회차는 404 */
 	RunResult result(String runId) {
 		Run run = ended(runId);
+		// 결과를 열면(6 · 8 · 1 어디서든) 홈 검사 상태가 '검사 완료'에서 '검사 전'으로 (-214)
+		if (run.resultSeenAt == null) {
+			runs.markResultSeen(run.id, LocalDateTime.now());
+		}
 		Map<String, RunScore> byArea = scores.findByRunIdIn(List.of(run.id))
 			.stream()
 			.collect(Collectors.toMap(s -> s.area, Function.identity()));
@@ -468,9 +484,10 @@ class RunResults {
 		// 끝났는데 run_score 가 없으면 AI 서버가 두 번 다 답하지 않은 회차다 (docs/run-flow.md §4 읽을 때)
 		ApiError reportError = byArea.isEmpty() ? new ApiError(ErrorCode.AI_UNAVAILABLE) : null;
 		CodeSources.Info info = codeInfo(run.codeSourceId);
-		return new RunResult(run.key(), services.current().map(ServiceRegistry.ConnectedService::name).orElse("svc_" + run.serviceId),
+		String service = services.byId(run.serviceKey()).map(ServiceRegistry.ConnectedService::name).orElse(run.serviceKey());
+		return new RunResult(run.key(), run.projectName, service,
 				Run.kst(startOf(run)), minutes(run), run.scenarioCount, run.itemCount, run.status,
-				hasCode(info) ? new CodeRef(info.type(), info.commit()) : null, scoresOf(byArea.values()), summary,
+				hasCode(info) ? new CodeRef(info.type(), info.commit(), info.ref(), info.fileHash()) : null, scoresOf(byArea.values()), summary,
 				issues.findByRunIdOrderById(run.id).stream().map(this::toIssue).toList(), passed, reportError);
 	}
 
@@ -554,7 +571,7 @@ class RunResults {
 
 		List<Entry> entries = recent.stream().limit(shown).map(run -> {
 			List<RunScore> rows = scoreRows.getOrDefault(run.id, List.of());
-			return new Entry(run.key(), Run.kst(startOf(run)), run.status, tags(run, newest, first, rows), run.scenarioCount,
+			return new Entry(run.key(), run.projectName, Run.kst(startOf(run)), run.status, tags(run, newest, first, rows), run.scenarioCount,
 					label(infos.get(run.codeSourceId)), scoresOf(rows), rows.stream().mapToInt(r -> r.failCount).sum());
 		}).toList();
 
@@ -594,6 +611,24 @@ class RunResults {
 		return tags;
 	}
 
+	/**
+	 * 8 · 6 프로젝트 이름 고치기 (F-HIST-05). 앞뒤 공백을 뗀 뒤 비었거나 100자를 넘으면(문자열이 아니어도) 400, 없거나 끝나지 않은 회차는 404.
+	 * 이름 한 칸만 UPDATE 해서, 그사이 다시 해석이 회차를 저장해도 고친 이름이 남는다
+	 */
+	@Transactional
+	Renamed rename(String runId, JsonNode body) {
+		JsonNode raw = body == null ? null : body.get("projectName");
+		String name = raw != null && raw.isString() ? raw.asString().strip() : "";
+		if (name.isEmpty() || name.length() > PROJECT_NAME_MAX) {
+			throw new ApiException(ErrorCode.BAD_REQUEST);
+		}
+		Long id = Run.idOf(runId);
+		if (id == null || runs.rename(id, name, ENDED) == 0) {
+			throw new ApiException(ErrorCode.NOT_FOUND);
+		}
+		return new Renamed(runId, name);
+	}
+
 	/** 끝난 회차(done · partial · stopped). 없거나 아직 안 끝났으면 404 */
 	Run ended(String runId) {
 		return Optional.ofNullable(Run.idOf(runId))
@@ -605,7 +640,7 @@ class RunResults {
 	private Report.Issue toIssue(RunIssue i) {
 		return new Report.Issue(i.issueKey, i.itemKey, i.area, i.level, i.certainty, i.title, i.tech, i.impact,
 				jsonNode(i.asIs), jsonNode(i.toBe), jsonNode(i.metrics), i.suspectReason, i.whereText, i.cause,
-				jsonNode(i.fix), i.passCriteria);
+				jsonNode(i.fix), i.passCriteria, i.penalty, i.ruleId);
 	}
 
 	private CodeSources.Info codeInfo(Long codeSourceId) {
@@ -647,9 +682,10 @@ class RunResults {
 		return run.startedAt != null ? run.startedAt : run.finishedAt;
 	}
 
+	/** 소요 시간 — 이어서 검사한 회차는 이어서 시작한 시각부터 (꺼져 있던 동안을 세지 않는다, -228) */
 	private static int minutes(Run run) {
-		return run.startedAt == null || run.finishedAt == null ? 0
-				: (int) Duration.between(run.startedAt, run.finishedAt).toMinutes();
+		LocalDateTime from = run.resumedAt != null ? run.resumedAt : run.startedAt;
+		return from == null || run.finishedAt == null ? 0 : (int) Duration.between(from, run.finishedAt).toMinutes();
 	}
 
 }

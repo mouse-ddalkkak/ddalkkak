@@ -27,6 +27,9 @@ public enum ErrorCode {
 	INVALID_RANGE(HttpStatus.BAD_REQUEST, "시작 사람 수가 끝보다 많아요"),
 	NO_TARGET(HttpStatus.BAD_REQUEST, "대상 API를 골라 주세요"),
 	AI_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "해석하지 못했어요 · 다시 해석해 주세요"),
+	// 4 로그인 설정 (-230). 401 은 웹이 관리자 로그아웃으로 보니 400 으로 낸다
+	NO_LOGIN_API(HttpStatus.BAD_REQUEST, "가입 · 로그인 API를 찾지 못했어요 · 토큰이나 쿠키를 넣어 주세요"),
+	TARGET_LOGIN_FAILED(HttpStatus.BAD_REQUEST, "로그인하지 못했어요 · 아이디 · 비밀번호를 확인하거나 토큰 · 쿠키를 넣어 주세요"),
 	;
 
 	final HttpStatus status;

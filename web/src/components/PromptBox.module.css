@@ -1,4 +1,4 @@
-.box{display:flex;flex-direction:column;gap:18px;padding:0 22px 24px;animation:ttk-drop .35s ease-out both;overflow:hidden}
+.box{display:flex;flex-direction:column;gap:18px;padding:0 22px 24px;animation:global(ttk-drop) .35s ease-out both;overflow:hidden}
 .box::before{content:'';border-top:4px dashed var(--ink-600);margin-bottom:4px}
 .head{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
 .title{font:var(--type-label);letter-spacing:3px;color:var(--cyan-300);white-space:nowrap}
@@ -10,3 +10,4 @@
 .caption{font:var(--type-caption);color:var(--ink-400)}
 .link{appearance:none;margin:0;padding:4px;border:0;background:transparent;color:var(--ink-300);font:var(--type-small);cursor:pointer;text-decoration:underline;text-underline-offset:4px}
 .link:hover{color:var(--white)}
+.link:disabled{color:var(--ink-600);cursor:default;text-decoration:none}

@@ -18,7 +18,7 @@ public class OrderSearchRepository {
 
 	@SuppressWarnings("unchecked")
 	public List<OrderView> search(Long userId, String q) {
-		// 심은 문제 ② 검색어를 SQL 문자열에 그대로 이어 붙인다 (Semgrep formatted-sql-string이 잡는 모양 — docs/scan.md §5)
+		// 심은 문제 ② 검색어를 SQL 문자열에 그대로 이어 붙인다 (Semgrep formatted-sql-string이 잡는 모양)
 		String sql = "select o.id, o.product_id, p.name, o.quantity, o.amount, o.status, o.created_at from orders o"
 				+ " join product p on p.id = o.product_id where o.user_id = :userId and p.name like '%" + q + "%' order by o.id desc";
 		List<Object[]> rows = em.createNativeQuery(sql).setParameter("userId", userId).getResultList();

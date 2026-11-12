@@ -9,19 +9,11 @@ const files = import.meta.glob('../../../contracts/4-screen/*.json', { eager: tr
 type Variant = { name: string; status: number; body: unknown }
 
 // "METHOD 경로" → 응답 변형들. 같은 API가 여러 파일에 있으면 openapi 한 곳에서 뽑은 같은 값이라 처음 것만 쓴다
-// GET /api/code-source만 파일마다 값이 달라 파일 이름을 변형 이름으로 쓴다 (기본 2-b-code-source)
+// GET /api/code-source도 응답 이름(previous · noSaved)으로 고른다 (-224 전에는 2-a · 2-b 파일 이름)
 const calls = new Map<string, Variant[]>()
-for (const [file, contract] of Object.entries(files)) {
-  const fileName = file.split('/').pop()!.replace('.json', '')
+for (const contract of Object.values(files)) {
   for (const [key, call] of Object.entries(contract.calls)) {
     const responses = Object.entries(call.responses ?? {})
-    if (key === 'GET /api/code-source') {
-      const list = calls.get(key) ?? []
-      for (const [, body] of responses) list.push({ name: fileName, status: 200, body })
-      list.sort((a, b) => Number(b.name === '2-b-code-source') - Number(a.name === '2-b-code-source'))
-      calls.set(key, list)
-      continue
-    }
     if (calls.has(key) || responses.length === 0) continue
     calls.set(
       key,
@@ -63,7 +55,7 @@ function pick(key: string, variants: Variant[]): Variant {
   if (key === 'GET /api/setup') return variants.find((v) => v.name === 'acked')!
   // 3 "기본 범위로 바로 가기"는 누르면 4로 가야 한다. 첫 2xx(200)는 done: false라 3에 머문다 (web.md §7)
   if (key === 'POST /api/runs/prepare/{id}/use-default') return variants.find((v) => v.name === 'done')!
-  // 5 ESC 중단은 1로 가야 한다. 첫 2xx(running)는 SSE done을 기다리는데 가짜 SSE는 done {status: done}이라 6으로 간다
+  // 5 중단은 1로 가야 한다. 첫 2xx(running)는 SSE done을 기다리는데 가짜 SSE는 done {status: done}이라 6으로 간다
   if (key === 'POST /api/runs/{id}/stop') return variants.find((v) => v.name === 'stopped')!
   // 오류 팝업 "여기까지 결과 보기"는 6으로 가야 한다. 첫 2xx(running)는 SSE done을 기다린다 (-143)
   if (key === 'POST /api/runs/{id}/finish-partial') return variants.find((v) => v.name === 'partial')!

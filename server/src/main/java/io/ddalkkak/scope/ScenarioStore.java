@@ -9,11 +9,14 @@ import io.ddalkkak.starter.ApiCatalog;
 import io.ddalkkak.starter.ApiCatalog.Endpoint;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.Function;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -32,6 +35,9 @@ public class ScenarioStore {
 
 	private static final List<String> AREAS = List.of("perf", "sec", "code");
 
+	/** AI 서버 기본 성능 항목의 이유 (ai/plan/defaults.py _fresh). 바꾸면 ai/tests/test_perf.py 의 문구 시험과 같이 */
+	private static final Pattern CALLS_WHY = Pattern.compile("호출이 [0-9,]+번으로 GET 중 [0-9]+번째로 많아요");
+
 	/** 약속 ② ScenarioItem 한 장. api · target · excludeReason · source 는 없으면 JSON 에서 뺀다 */
 	@JsonIgnoreProperties(ignoreUnknown = true)
 	public record Item(String key, String area, String tool, String title,
@@ -43,6 +49,14 @@ public class ScenarioStore {
 		/** 재검사에서 AI 를 부르지 않고 지난 시나리오를 그대로 쓸 때 save 에 넘기는 모양 */
 		public Item asReused() {
 			return new Item(key, area, tool, title, api, target, why, params, recommended, excluded, excludeReason, true, source);
+		}
+
+		public Item withKey(String key) {
+			return new Item(key, area, tool, title, api, target, why, params, recommended, excluded, excludeReason, reused, source);
+		}
+
+		public Item withApi(String api) {
+			return new Item(key, area, tool, title, api, target, why, params, recommended, excluded, excludeReason, reused, source);
 		}
 
 	}
@@ -333,11 +347,12 @@ public class ScenarioStore {
 
 	/** 영역 3개로 나누고 예상치를 계산한다. 코드 없이 검사하는 회차의 코드 품질 카드는 포함으로 치지 않는다 */
 	private Scope scopeOf(RunLookup.Info run, List<Entry> entries) {
+		Map<String, String> callsWhy = callsWhy(run.snapshotId());
 		List<Scope.Part> parts = AREAS.stream().map(area -> {
 			boolean noCode = "code".equals(area) && !run.hasCode();
 			List<Scope.Card> cards = entries.stream()
 				.filter(e -> area.equals(e.item.area))
-				.map(e -> new Scope.Card(item(e.item, merged(e.item.params, e.scope.params), e.scope.reused),
+				.map(e -> new Scope.Card(item(e.item, merged(e.item.params, e.scope.params), e.scope.reused, callsWhy),
 						e.scope.included && !noCode, "manual".equals(e.item.source) ? null : parse(e.item.params)))
 				.toList();
 			String offReason = noCode ? "코드 없음" : cards.isEmpty() ? "항목 없음" : null;
@@ -351,8 +366,31 @@ public class ScenarioStore {
 	}
 
 	private Item item(ScenarioItem row, JsonNode params, boolean reused) {
-		return new Item(row.itemKey, row.area, row.tool, row.title, row.api, row.target, row.why, params, row.recommended,
+		return item(row, params, reused, Map.of());
+	}
+
+	private Item item(ScenarioItem row, JsonNode params, boolean reused, Map<String, String> callsWhy) {
+		String why = row.api != null && row.why != null && CALLS_WHY.matcher(row.why).matches() ? callsWhy.getOrDefault(row.api, row.why) : row.why;
+		return new Item(row.itemKey, row.area, row.tool, row.title, row.api, row.target, why, params, row.recommended,
 				row.excluded, row.excludeReason, reused, row.source);
+	}
+
+	/**
+	 * API("GET /api/orders") → 이 회차 목록의 호출 수 · GET 순위로 쓴 기본 성능 이유 (-218). 재검사는 지난 scenario_item 줄을 그대로
+	 * 가리켜 why 가 첫 검사 때 호출 수로 남는다. 순위는 ai/plan/defaults.py _ranked 와 같게 호출 많은 순, 같으면 경로 순
+	 */
+	private Map<String, String> callsWhy(String snapshotId) {
+		if (snapshotId == null) {
+			return Map.of();
+		}
+		List<Endpoint> gets = catalog.endpoints(snapshotId).stream().filter(e -> "GET".equals(e.method()))
+			.sorted(Comparator.comparingLong(Endpoint::calls).reversed().thenComparing(Endpoint::path))
+			.toList();
+		Map<String, String> out = new HashMap<>();
+		for (int i = 0; i < gets.size(); i++) {
+			out.put(gets.get(i).api(), String.format(Locale.ROOT, "호출이 %,d번으로 GET 중 %d번째로 많아요", gets.get(i).calls(), i + 1));
+		}
+		return out;
 	}
 
 	/** AI 가 정한 조건 위에 사용자가 바꾼 값을 덮는다 */

@@ -30,7 +30,10 @@ class CodeSourceController {
 
 	private final CodeJobs jobs;
 
-	CodeSourceController(CodeJobs jobs) {
+	private final CodeArtifacts artifacts;
+
+	CodeSourceController(CodeJobs jobs, CodeArtifacts artifacts) {
+		this.artifacts = artifacts;
 		this.jobs = jobs;
 	}
 
@@ -40,13 +43,20 @@ class CodeSourceController {
 		return new Last(jobs.last().orElse(null));
 	}
 
-	/** none 은 가져올 것이 없어 작업 없이 바로 끝난다 (jobId null). 준비는 codeJobId null 로 시작하고 코드 품질은 "코드 없음"으로 꺼진다 */
+	/** none 은 가져올 것이 없어 작업 없이 바로 끝난다 (jobId null). 줄은 남겨 저장한 방식이 되고, 검사마다 코드 품질은 "코드 없음"으로 꺼진다 */
 	@PostMapping
 	Job post(@RequestBody Input body) {
 		if ("none".equals(body.type())) {
+			jobs.saveNone();
 			return new Job(null);
 		}
 		return new Job(jobs.start(body.type(), body.ref(), body.branch(), body.token()));
+	}
+
+	/** 0-3 ④ 실행 파일 카드의 디컴파일 후보 (F-CODE-05) */
+	@GetMapping("/artifacts")
+	CodeArtifacts.Found artifacts() {
+		return artifacts.find();
 	}
 
 	@PostMapping("/zip")

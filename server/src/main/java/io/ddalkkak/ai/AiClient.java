@@ -66,12 +66,23 @@ public class AiClient {
 		return settings.findById(AiSetting.ID).flatMap(this::key).isPresent();
 	}
 
-	/** master.key 가 바뀌어 못 풀면 설정이 없는 것(AI 없음)으로 본다. 다시 연결하면 새 키로 덮인다 */
+	/** 마지막으로 못 푼 암호문. 화면 헤더 GET · hasKey · call 이 매번 부르니 같은 암호문이면 WARNING 을 다시 남기지 않는다 */
+	private volatile String undecryptable;
+
+	/**
+	 * master.key 가 바뀌어 못 풀면 설정이 없는 것(AI 없음)으로 본다. 다시 연결하면 새 키로 덮인다.
+	 * 결과가 기본 문구로 나오는 이유를 가를 수 있게 WARNING 한 줄. 예외 종류만 남기고 키 · 암호문은 남기지 않는다 (NF-05)
+	 */
 	Optional<String> key(AiSetting setting) {
 		try {
 			return Optional.of(secrets.decrypt(setting.apiKeyEnc));
 		}
 		catch (IllegalStateException | IllegalArgumentException e) {
+			if (!setting.apiKeyEnc.equals(undecryptable)) {
+				undecryptable = setting.apiKeyEnc;
+				log.warn("저장된 AI 키를 풀지 못해 AI 없이 불러요 (master.key 가 바뀌었거나 저장값이 깨짐 · AI 다시 연결 필요): {}",
+						e.getClass().getSimpleName());
+			}
 			return Optional.empty();
 		}
 	}

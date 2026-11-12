@@ -1,23 +1,20 @@
 import { getHistory } from '../../api/runs'
 import { useLoad } from '../../hooks/useLoad'
-import { useKeys } from '../../hooks/useKeys'
 import { pressable } from '../../utils/keys'
 import PageTitle from '../../components/PageTitle'
+import ProjectName from '../../components/ProjectName'
 import Button from '../../components/Button'
+import RunBusyDialog from '../../components/RunBusyDialog'
+import { useScan } from '../../hooks/useScan'
 import { AREAS, AREA_NAME, scoreColor, scoreText } from '../../utils/score'
 import { dateOnly, shortDateTime } from '../../utils/format'
 import s from './History.module.css'
 
-// 8 이력 — 행 → 그 회차의 6 · 재검사 → #/code(2-b)
-// 서비스 이름은 GET /api/runs에 없어(/api/home) 부제는 "검사 N번"만. 막대 아래 날짜는 trend.at
+// 8 이력 — 행 → 그 회차의 6 · 재검사 → 홈 딸깍 검사와 같이 저장한 코드 연결로 바로 준비 (-245)
+// 행마다 프로젝트 이름(✎로 그 회차만 고침, F-HIST-05) · 일시. 부제는 "검사 N번"만. 막대 아래 날짜는 trend.at
 export default function History() {
-  const { data } = useLoad(getHistory, [])
-  // ESC 홈 · ENTER 최신 결과 (F-HOME-05)
-  const latest = data?.runs[0]
-  useKeys({
-    Escape: () => (location.hash = '#/'),
-    Enter: () => latest && (location.hash = `#/runs/${encodeURIComponent(latest.runId)}`),
-  })
+  const { data, setData } = useLoad(getHistory, [])
+  const { scan, busy, closeBusy } = useScan()
   if (!data) return null
 
   return (
@@ -26,7 +23,7 @@ export default function History() {
         title="검사 이력"
         sub={`검사 ${data.total}번`}
         right={
-          <Button onClick={() => (location.hash = '#/code')} className={s.rescan}>
+          <Button onClick={() => scan()} className={s.rescan}>
             재검사
           </Button>
         }
@@ -80,9 +77,17 @@ export default function History() {
       </section>
       <div className={s.runs}>
         {data.runs.map((r) => (
-          <div key={r.runId} className={s.run} {...pressable(() => (location.hash = `#/runs/${encodeURIComponent(r.runId)}`))}>
+          // 이름을 고치는 중(포커스가 폼 안)이면 넘어가지 않는다 — 입력칸에서 끌어 고르다 폼 밖에서 놓으면 click이 행에 온다
+          <div key={r.runId} className={s.run} {...pressable(() => document.activeElement?.closest('form') || (location.hash = `#/runs/${encodeURIComponent(r.runId)}`))}>
             <div className={s.runText}>
               <div className={s.runHead}>
+                <ProjectName
+                  className={s.pname}
+                  runId={r.runId}
+                  name={r.projectName}
+                  // 지금 상태 위에 고친다 — 두 행을 거의 같이 저장해도 먼저 끝난 이름이 옛 목록에 덮이지 않게
+                  onSaved={(projectName) => setData((d) => d && { ...d, runs: d.runs.map((x) => (x.runId === r.runId ? { ...x, projectName } : x)) })}
+                />
                 <span className={s.date}>{shortDateTime(r.at)}</span>
                 {r.tags.map((t) => (
                   <span key={t} className={s.tag} data-partial={r.status === 'partial' ? '' : undefined}>
@@ -108,6 +113,7 @@ export default function History() {
           </div>
         ))}
       </div>
+      {busy && <RunBusyDialog onClose={closeBusy} />}
     </div>
   )
 }

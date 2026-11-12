@@ -1,11 +1,14 @@
 package io.ddalkkak.sample.orderapi;
 
+import io.ddalkkak.sample.orderapi.user.AuthController;
 import io.ddalkkak.sample.orderapi.user.TokenStore;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
+import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
+import java.util.Arrays;
 import java.util.List;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -25,7 +28,7 @@ import org.springframework.security.web.authentication.HttpStatusEntryPoint;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.web.filter.OncePerRequestFilter;
 
-// 로그인 규칙은 URL로 건다 (docs/starter-kit.md §2 — 스타터킷이 이 방식을 못 보는 한계 확인용)
+// 로그인 규칙은 URL로 건다 (애너테이션 대신 URL 규칙으로 건 앱도 스타터킷이 로그인 필요를 알아내는지 확인용)
 @Configuration
 public class SecurityConfig {
 
@@ -65,9 +68,16 @@ public class SecurityConfig {
 		@Override
 		protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
 				throws ServletException, IOException {
+			// Authorization: Bearer 가 먼저, 없으면 로그인 때 준 SESSION 쿠키
 			String header = request.getHeader(HttpHeaders.AUTHORIZATION);
-			if (header != null && header.startsWith("Bearer ")) {
-				tokens.find(header.substring(7)).ifPresent(login -> SecurityContextHolder.getContext()
+			String token = header != null && header.startsWith("Bearer ") ? header.substring(7)
+					: Arrays.stream(request.getCookies() == null ? new Cookie[0] : request.getCookies())
+						.filter(c -> AuthController.SESSION_COOKIE.equals(c.getName()))
+						.map(Cookie::getValue)
+						.findFirst()
+						.orElse(null);
+			if (token != null) {
+				tokens.find(token).ifPresent(login -> SecurityContextHolder.getContext()
 					.setAuthentication(new UsernamePasswordAuthenticationToken(login, null,
 							List.of(new SimpleGrantedAuthority("ROLE_" + login.role())))));
 			}

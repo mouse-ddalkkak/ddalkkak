@@ -16,6 +16,13 @@ COPY server/ ./
 COPY --from=web /web/dist ./src/main/resources/static
 RUN chmod +x gradlew && ./gradlew bootJar --no-daemon -x test
 
+# 샘플 order-api — 설치기 --sample 이 이 이미지로 띄운다(start.sh, -227). 스타터킷은 composite build 라 같이 넣는다
+FROM --platform=$BUILDPLATFORM eclipse-temurin:21-jdk AS sample
+WORKDIR /src
+COPY starter-kit/ starter-kit/
+COPY examples/order-api/ examples/order-api/
+RUN cd examples/order-api && chmod +x gradlew ../../starter-kit/gradlew && ./gradlew bootJar --no-daemon -x test
+
 FROM eclipse-temurin:21-jre
 # 코드 가져오기 (docs/run-flow.md §5): git clone · jar 에서 코드 복원(Vineflower)
 RUN apt-get update && apt-get install -y --no-install-recommends git && rm -rf /var/lib/apt/lists/*
@@ -25,6 +32,7 @@ ADD --checksum=sha256:1dfcfe974395734fa467ce620661c7623d05ba83670de0529b1fbd63ff
 COPY --from=docker:29.8.1-cli /usr/local/bin/docker /usr/local/bin/docker
 WORKDIR /app
 COPY --from=server /server/build/libs/*.jar app.jar
+COPY --from=sample /src/examples/order-api/build/libs/order-api-*[0-9].jar order-api.jar
 # 비밀번호 분실: docker exec ddalkkak ddalkkak reset-password (compose 는 docker compose exec server …)
 RUN printf '#!/bin/sh\nexec java -jar /app/app.jar "$@"\n' > /usr/local/bin/ddalkkak && chmod +x /usr/local/bin/ddalkkak
 COPY server/start.sh /app/start.sh

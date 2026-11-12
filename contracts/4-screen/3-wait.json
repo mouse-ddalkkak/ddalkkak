@@ -7,9 +7,6 @@
       "owner": [
         "B2"
       ],
-      "request": {
-        "codeJobId": "job_3"
-      },
       "responses": {
         "200": {
           "runId": "run_5"
@@ -195,7 +192,7 @@
       }
     },
     "POST /api/runs/prepare/{id}/use-default": {
-      "summary": "3 AI 추천 없이 기본 범위로 바로 가기 (ENTER)",
+      "summary": "3 AI 추천 없이 기본 범위로 바로 가기",
       "owner": [
         "B2"
       ],

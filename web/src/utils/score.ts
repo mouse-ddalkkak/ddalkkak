@@ -15,3 +15,9 @@ export function gaugeColor(pct: number) {
 }
 
 export const scoreText = (v: number | null | undefined) => (v == null ? '--' : String(v))
+
+/** 점수 근거 한 줄 — 영역 점수 = max(0, 100 − 문제별 감점 합) (F-RPT-04 · -247). 예: "100 − 30 − 10 = 60" */
+export function scoreBasis(penalties: number[], score: number) {
+  if (penalties.length === 0) return `감점 없음 = ${score}`
+  return `100 − ${penalties.join(' − ')} = ${score}${100 - penalties.reduce((a, b) => a + b, 0) < 0 ? ' (0점 아래로는 내려가지 않아요)' : ''}`
+}

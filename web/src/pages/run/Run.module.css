@@ -9,13 +9,15 @@
 .tree{flex:1.4 1 520px;min-width:0;display:flex;flex-direction:column;gap:18px;padding:28px 28px 30px;border:4px solid var(--band-500);border-radius:var(--radius-frame);background:var(--surface-panel);min-height:420px}
 .step{display:flex;flex-direction:column;gap:14px}
 .stepHead{display:flex;align-items:center;gap:20px;cursor:pointer}
-.stepName{flex:1;font:var(--type-body);letter-spacing:2px;color:var(--ink-400)}
+.stepName{flex:1;min-width:0;overflow-wrap:anywhere;font:var(--type-body);letter-spacing:2px;color:var(--ink-400)}
+.server{max-width:none}
 .stepHead[data-state=done] .stepName{text-decoration:line-through}
 .stepHead[data-state=running] .stepName{font:var(--type-label);color:var(--white)}
 .arrow{font:var(--type-small);color:var(--ink-400)}
 .stepHead[data-state=running] .arrow{color:var(--cyan-300)}
 .items{display:flex;flex-direction:column;gap:12px;margin-left:6px;padding-left:24px;border-left:4px dotted var(--ink-600)}
-.item{display:flex;align-items:center;gap:12px;font:var(--type-caption);line-height:1;color:var(--ink-400)}
+.item{display:flex;align-items:center;gap:12px;font:var(--type-caption);line-height:1.3;color:var(--ink-400)}
+.item>span:last-child{min-width:0;overflow-wrap:anywhere}
 .item[data-state=done] span:last-child{text-decoration:line-through}
 .item[data-state=running]{font:var(--type-small);letter-spacing:1px;color:var(--white)}
 .logPanel{display:flex;flex-direction:column;gap:16px;padding:24px 28px 28px;border:4px solid var(--ink-700);background:var(--surface-panel)}
@@ -29,7 +31,7 @@
 .toggle{appearance:none;margin:0;padding:4px 8px;border:0;background:transparent;font:var(--type-caption);color:var(--ink-400);cursor:pointer}
 .toggle[aria-pressed=true]{color:var(--cyan-300)}
 .overlay{position:fixed;inset:0;z-index:45;display:flex;align-items:center;justify-content:center;padding:24px;background:var(--surface-overlay)}
-.popup{position:relative;width:min(640px,100%);display:flex;flex-direction:column;gap:16px;padding:24px;border:4px solid var(--coral-400);background:var(--ink-900);box-shadow:8px 8px 0 var(--coral-400);animation:ttk-pop .2s steps(3) both}
+.popup{position:relative;width:min(640px,100%);display:flex;flex-direction:column;gap:16px;padding:24px;border:4px solid var(--coral-400);background:var(--ink-900);box-shadow:8px 8px 0 var(--coral-400);animation:global(ttk-pop) .2s steps(3) both}
 .popHead{display:flex;gap:14px;align-items:flex-start}
 .popLed{padding-top:4px}
 .popText{flex:1;min-width:0;display:flex;flex-direction:column;gap:10px}

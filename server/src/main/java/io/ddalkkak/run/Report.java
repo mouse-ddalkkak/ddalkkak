@@ -1,5 +1,6 @@
 package io.ddalkkak.run;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import java.util.List;
 import java.util.Map;
 import tools.jackson.databind.JsonNode;
@@ -34,10 +35,15 @@ record Report(String source, RunHistory.Scores scores, Map<String, ReportAreaSum
 
 	}
 
-	/** asIs · toBe · metrics · fix 는 화면이 그대로 쓰는 JSON 이라 저장도 JSON 문자열 그대로 한다 */
+	/**
+	 * asIs · toBe · metrics · fix 는 화면이 그대로 쓰는 JSON 이라 저장도 JSON 문자열 그대로 한다.
+	 * penalty 는 이 문제로 영역 점수에서 뺀 점수(위험 30 · 주의 10) — 계산은 AI 서버가 하고 Spring 은 넘기기만 한다 (-247).
+	 * ruleId 는 내부용 — ③에서 받아 저장하고 코드 위치를 좁히는 데만 쓴다. ④ 화면 응답에는 싣지 않는다 (-247, !147 리뷰 1-2)
+	 */
 	record Issue(String id, String itemKey, String area, String level, String certainty, String title, String tech,
 			String impact, JsonNode asIs, JsonNode toBe, JsonNode metrics, String suspectReason, String where,
-			String cause, JsonNode fix, String passCriteria) {
+			String cause, JsonNode fix, String passCriteria, Integer penalty,
+			@JsonProperty(access = JsonProperty.Access.WRITE_ONLY) String ruleId) {
 	}
 
 	record Passed(String area, String name, String value) {

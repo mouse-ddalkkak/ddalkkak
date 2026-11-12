@@ -6,4 +6,4 @@
 .todo{background:transparent;color:var(--ink-400);border-color:var(--ink-700)}
 /* 진행 중 칩 테두리를 도는 빛 */
 .glow{position:absolute;inset:-4px;padding:4px;overflow:hidden;pointer-events:none;-webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask:linear-gradient(#000 0 0) content-box exclude,linear-gradient(#000 0 0)}
-.spin{position:absolute;left:50%;top:50%;width:160%;aspect-ratio:1;background:conic-gradient(from 0deg,transparent 0 290deg,var(--glow-dim) 320deg,var(--white) 350deg,transparent 360deg);animation:ttk-spin 2.4s linear infinite}
+.spin{position:absolute;left:50%;top:50%;width:160%;aspect-ratio:1;background:conic-gradient(from 0deg,transparent 0 290deg,var(--glow-dim) 320deg,var(--white) 350deg,transparent 360deg);animation:global(ttk-spin) 2.4s linear infinite}

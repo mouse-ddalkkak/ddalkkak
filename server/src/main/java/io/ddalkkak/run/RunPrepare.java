@@ -1,5 +1,6 @@
 package io.ddalkkak.run;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import io.ddalkkak.ApiError;
@@ -18,7 +19,10 @@ import io.ddalkkak.starter.ServiceRegistry;
 import io.ddalkkak.starter.ServiceRegistry.ConnectedService;
 import java.io.IOException;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -30,6 +34,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.function.Consumer;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import org.slf4j.Logger;
@@ -57,6 +62,12 @@ class RunPrepare {
 
 	private static final Map<String, String> AREA_NAMES = Map.of("perf", "성능", "sec", "보안", "code", "코드 품질");
 
+	/** 호출 많은 순, 같으면 경로 순 (ai/plan/defaults.py `_ranked`) */
+	private static final Comparator<Endpoint> BY_CALLS = Comparator.comparingLong(Endpoint::calls).reversed().thenComparing(Endpoint::path);
+
+	/** 경로 변수가 끝에 하나뿐. AuthzCheck 는 끝의 /{id} 를 떼 목록 경로를 만들어서 그 밖의 모양은 늘 미검사가 된다 (ai/plan/defaults.py ID_PATH) */
+	private static final Pattern ID_PATH = Pattern.compile("[^{}]*/\\{[^{}/]+\\}");
+
 	/** 약속 ④ Prepare 의 줄 하나. state = done · running · waiting · skipped */
 	record Row(String name, String state, String detail) {
 	}
@@ -75,8 +86,18 @@ class RunPrepare {
 	private record AiApi(String method, String path, List<ApiCatalog.Param> params, AiAuth auth, String handler, long calls) {
 	}
 
+	/**
+	 * authzOnly: 권한 점검만 받으려고 apis 에 더 실은 API (-238). ifDown: AI 서버가 끝내 답하지 않을 때 대신 쓸 답 — 바뀐 것 없이 권한 점검만
+	 * 받으려고 부를 때 지난 항목 그대로 (!149 리뷰 2). 둘 다 보내지 않는다
+	 */
 	@JsonInclude(JsonInclude.Include.NON_NULL)
-	private record AiRequest(AiService service, boolean hasCode, String mode, List<AiApi> apis, List<Item> previous) {
+	private record AiRequest(AiService service, boolean hasCode, String mode, List<AiApi> apis, List<Item> previous,
+			@JsonIgnore String authzOnly, @JsonIgnore AiAnswer ifDown) {
+
+		AiRequest ifDown(AiAnswer answer) {
+			return new AiRequest(service, hasCode, mode, apis, previous, authzOnly, answer);
+		}
+
 	}
 
 	@JsonIgnoreProperties(ignoreUnknown = true)
@@ -253,10 +274,10 @@ class RunPrepare {
 	}
 
 	/**
-	 * POST /api/runs/prepare. 바로 확인하고(앱 꺼짐 · 이미 검사 중 · 모르는 codeJobId) run 줄을 만든 뒤 runId 를 돌려주고 나머지는
+	 * POST /api/runs/prepare. 바로 확인하고(앱 꺼짐 · 이미 검사 중) 저장한 코드 방식으로 다시 가져오기를 시작하고(-242) run 줄을 만든 뒤 runId 를 돌려주고 나머지는
 	 * 뒤에서 돈다. 준비만 하고 떠난 preparing · ready 회차는 막지 않는다 — 검사 중(running)인 회차만 막는다
 	 */
-	String start(String codeJobId) {
+	String start() {
 		ConnectedService service = services.current()
 			.filter(ConnectedService::connected)
 			.orElseThrow(() -> new ApiException(ErrorCode.SERVICE_OFFLINE));
@@ -264,13 +285,15 @@ class RunPrepare {
 		if (runs.countByServiceIdAndStatusIn(serviceId, List.of(RunStatus.RUNNING.value())) > 0) {
 			throw new ApiException(ErrorCode.RUN_IN_PROGRESS);
 		}
-		// jobId 는 job_<code_source id>. 코드 작업이 끝나길 기다리는 일은 코드 가져오기(-144)가 붙인다
-		Long codeSourceId = codeJobId == null ? null : codeSources.idOfJob(codeJobId).orElseThrow(() -> new ApiException(ErrorCode.BAD_REQUEST));
+		// 저장한 방식을 복사한 새 줄. 없거나 none 이면 코드 없이. 회차에 바로 달아 다른 가져오기의 정리가 이 폴더를 지우지 않게 — 끝은 1줄이 기다린다
+		Long codeSourceId = codeJobs.refetch().orElse(null);
 		CodeSources.Info code = codeSourceId == null ? null : codeSources.of(List.of(codeSourceId)).get(codeSourceId);
 		boolean hasCode = code != null && !"none".equals(code.type());
 
 		Run run = new Run();
 		run.serviceId = serviceId;
+		// 프로젝트 이름 기본값 = 시작 때 연결된 서비스 이름 (F-HIST-05). service.name 과 같은 100자라 자르지 않는다
+		run.projectName = service.name();
 		run.codeSourceId = codeSourceId;
 		run.status = RunStatus.PREPARING.value();
 		runs.save(run);
@@ -376,10 +399,18 @@ class RunPrepare {
 			progress.aiMode(connected ? "llm" : "default");
 			progress.start(2);
 			List<Item> past = last.isPresent() ? store.forApis(service.id()) : List.of();
+			AiRequest request = request(service, hasCode, endpoints, diff, past);
 			// 코드를 새로 연결했거나 끊었으면, 또는 코드가 있는데 지난 항목에 코드 품질이 없으면 바뀐 API 가 없어도 AI 를 부른다
-			// (AI 서버가 코드 품질 시나리오를 만들거나 뺀다, ai-server §2-4). 코드 품질 없이 저장된 서비스도 다음 재검사에서 다시 만든다
+			// (AI 서버가 코드 품질 시나리오를 만들거나 뺀다, ai-server §2-4). 코드 품질 없이 저장된 서비스도 다음 재검사에서 다시 만든다.
+			// 지난 항목에 권한 점검이 없어 로그인 필요 {id} GET 을 더 실었을 때도 부른다 (-238)
 			boolean codeMissing = hasCode && past.stream().noneMatch(i -> "code".equals(i.area()));
-			if (!past.isEmpty() && diff.added() == 0 && diff.removed() == 0 && diff.changed() == 0 && hasCode == last.get().hasCode() && !codeMissing) {
+			boolean same = !past.isEmpty() && diff.added() == 0 && diff.removed() == 0 && diff.changed() == 0 && hasCode == last.get().hasCode()
+					&& !codeMissing;
+			if (same && request.authzOnly() != null) {
+				// 권한 점검만 받으려고 부른다. AI 서버가 답하지 않으면 준비를 실패로 끝내지 않고 지난 항목 그대로 — 다음 재검사에서 다시 부른다 (!149 리뷰 2)
+				request = request.ifDown(new AiAnswer(last.get().aiMode(), past.stream().map(Item::asReused).toList()));
+			}
+			if (same && request.authzOnly() == null) {
 				// 바뀐 API 도 코드 변화도 없다: AI 를 부르지 않고 지난 시나리오를 그대로 쓴다. reused 표시가 있어야 save 가 지난 선택을 이어 받는다
 				progress.aiMode(last.get().aiMode());
 				finish(runId, last.get().aiMode(), past.stream().map(Item::asReused).toList());
@@ -387,7 +418,6 @@ class RunPrepare {
 				progress.row(2, "done", "바뀐 API 없음 · 지난 항목 그대로");
 				return;
 			}
-			AiRequest request = request(service, hasCode, endpoints, diff, past);
 			if (progress.defaultBeforeAsk(request)) {
 				finishDefault(runId, progress, ask(request, false));
 				return;
@@ -408,6 +438,10 @@ class RunPrepare {
 			finish(runId, answer.source(), answer.items());
 			progress.aiMode(answer.source());
 			progress.ready();
+			if (answer == request.ifDown()) {
+				progress.row(2, "done", "바뀐 API 없음 · 지난 항목 그대로");
+				return;
+			}
 			progress.row(2, connected ? "done" : "skipped", connected ? areas(answer.items()) : "AI 연결 없음 · 기본 범위 사용");
 		}
 		catch (Failure e) {
@@ -452,18 +486,68 @@ class RunPrepare {
 	/**
 	 * 지난 회차가 있으면 mode changed: apis 는 diff(마지막으로 끝난 회차와 비교)에서 new · changed 인 것만, previous 는 지난
 	 * 시나리오에서 없어진 API 의 것을 뺀 것(AI 서버는 무엇이 없어졌는지 모른다). 지난 시나리오가 없으면 목록 전체를 보내는 full 이다.
-	 * 목록의 change 는 바로 앞 스냅샷(준비만 하고 버린 회차의 것일 수 있다)과 비교한 값이라 쓰지 않는다
+	 * 목록의 change 는 바로 앞 스냅샷(준비만 하고 버린 회차의 것일 수 있다)과 비교한 값이라 쓰지 않는다.
+	 * previous 에 권한 점검이 없고 바뀐 API 에 권한 점검을 걸 수 있는 API 가 없으면 바뀌지 않은 그런 API 하나를 apis 에 더 싣는다 (-238) —
+	 * AI 서버는 재검사의 권한 점검을 apis 중에서만 채운다(ai-server §2-4)
 	 */
 	private AiRequest request(ConnectedService service, boolean hasCode, List<Endpoint> endpoints, ApiDiff diff, List<Item> past) {
 		boolean changed = !past.isEmpty();
 		Set<String> removed = changed ? apisWith(diff, Set.of("removed")) : Set.of();
 		Set<String> touched = changed ? apisWith(diff, Set.of("new", "changed")) : Set.of();
+		List<Item> previous = changed ? past.stream().filter(i -> i.api() == null || !removed.contains(i.api())).toList() : null;
+		String authzOnly = !changed || previous.stream().anyMatch(RunPrepare::isAuthz)
+				|| endpoints.stream().anyMatch(e -> touched.contains(e.api()) && authzTarget(e)) ? null
+						: endpoints.stream().filter(RunPrepare::authzTarget).min(BY_CALLS).map(Endpoint::api).orElse(null);
 		List<AiApi> apis = endpoints.stream()
-			.filter(e -> !changed || touched.contains(e.api()))
+			.filter(e -> !changed || touched.contains(e.api()) || e.api().equals(authzOnly))
 			.map(e -> new AiApi(e.method(), e.path(), e.params(), new AiAuth(e.authRequired(), e.role()), e.handler(), e.calls()))
 			.toList();
-		List<Item> previous = changed ? past.stream().filter(i -> i.api() == null || !removed.contains(i.api())).toList() : null;
-		return new AiRequest(new AiService(service.name(), service.framework()), hasCode, changed ? "changed" : "full", apis, previous);
+		return new AiRequest(new AiService(service.name(), service.framework()), hasCode, changed ? "changed" : "full", apis, previous, authzOnly, null);
+	}
+
+	/** 재검사가 권한 점검으로 채우는 API: 로그인이 필요하고 경로 변수가 끝에 하나뿐인 GET (ai/plan/defaults.py `_id_gets` 중 `_needs_login`) */
+	private static boolean authzTarget(Endpoint e) {
+		return "GET".equals(e.method()) && e.authRequired() && ID_PATH.matcher(e.path()).matches();
+	}
+
+	/** 권한 점검(남의 데이터 보기) 시나리오 — ddalkkak 중 params 에 idCount 가 있는 것 (-170) */
+	private static boolean isAuthz(Item item) {
+		return "ddalkkak".equals(item.tool()) && item.params() != null && item.params().has("idCount");
+	}
+
+	/**
+	 * 권한 점검만 받으려고 더 실은 API(-238)를 AI 서버는 바뀐 API 로 보고 성능 · 기본 공격 범위도 새로 만든다. 그 API 를 대상으로 한 카드는
+	 * 권한 점검만 받고, 그 API 의 지난 카드는 그대로 쓴다. 받은 카드의 key 가 되살린 key 와 겹치면(save 는 뒤의 것만 남긴다) 그 영역의 빈 번호로 바꾼다.
+	 * 기본 공격 범위는 AI 서버가 apis 중 호출 1위 하나에만 만드니, 더 실은 API 가 1위라 그리로 갔으면 버리지 않고 바뀐 API 중 1위로 옮긴다 —
+	 * 안 그러면 바뀐 API 의 ZAP 카드가 사라진다 (!149 리뷰 1). 재검사는 LLM 없이 규칙으로 답해서(ai-server §2-4) 카드 글은 API 와 상관없다
+	 */
+	private static AiAnswer authzOnly(AiRequest request, AiAnswer answer) {
+		String api = request.authzOnly();
+		String top = request.apis().stream().filter(a -> !api.equals(a.method() + " " + a.path()))
+			.min(Comparator.comparingLong(AiApi::calls).reversed().thenComparing(AiApi::path))
+			.map(a -> a.method() + " " + a.path()).orElse(null);
+		List<Item> restored = request.previous().stream().filter(i -> api.equals(i.api())).map(Item::asReused).toList();
+		List<Item> taken = answer.items().stream()
+			.map(i -> top != null && api.equals(i.api()) && "zap".equals(i.tool()) ? i.withApi(top) : i)
+			.filter(i -> !api.equals(i.api()) || isAuthz(i))
+			.toList();
+		Set<String> mine = restored.stream().map(Item::key).collect(Collectors.toSet());
+		Set<String> used = new HashSet<>(mine);
+		taken.forEach(i -> used.add(i.key()));
+		List<Item> items = new ArrayList<>(restored);
+		for (Item item : taken) {
+			if (!mine.contains(item.key())) {
+				items.add(item);
+				continue;
+			}
+			int number = 1;
+			while (used.contains(item.area() + "-" + number)) {
+				number++;
+			}
+			used.add(item.area() + "-" + number);
+			items.add(item.withKey(item.area() + "-" + number));
+		}
+		return new AiAnswer(answer.source(), items);
 	}
 
 	/** diff 에서 change 가 kinds 중 하나인 API ("GET /api/orders") */
@@ -483,11 +567,15 @@ class RunPrepare {
 				if (answer.source() == null || answer.items() == null) {
 					throw new IOException("AI 서버 /ai/scenarios 응답 형식이 달라요");
 				}
-				return answer;
+				return request.authzOnly() == null ? answer : authzOnly(request, answer);
 			}
 			catch (IOException e) {
 				log.warn("AI 서버 /ai/scenarios 시도 {} 실패: {}", attempt + 1, e.toString());
 			}
+		}
+		if (request.ifDown() != null) {
+			log.warn("AI 서버가 답하지 않아 지난 항목을 그대로 씀 — 권한 점검 카드는 다음 재검사에서");
+			return request.ifDown();
 		}
 		throw new Failure(2, ErrorCode.SERVER_ERROR);
 	}

@@ -25,7 +25,9 @@ def ai_reports(raw: RawReport, x_ai_provider: Literal["claude", "openai", "custo
     body = raw.model_dump()
     report = build_report(body)
     cfg = read_config(x_ai_provider, x_ai_base_url, x_ai_key, x_ai_model)
-    return explain(body, report, cfg) if cfg else report
+    out = explain(body, report, cfg) if cfg else report
+    out.pop("_ruleIds", None)  # 원래 규칙 ID는 원본 결과(내부 데이터)에만 — 응답 · 화면에는 싣지 않는다 (-233)
+    return out
 
 
 class ValueLabel(BaseModel):
@@ -70,6 +72,9 @@ def ai_prompts(req: PromptRequest, x_ai_provider: Literal["claude", "openai", "c
     if not req.issues:
         return JSONResponse({"code": "NO_ITEMS", "message": "항목을 하나 이상 골라 주세요"}, status_code=400)
     body = req.model_dump()
+    # 문제의 감점 · 내부용 규칙 ID는 요청문 재료가 아니다 — 한 번 빼서 초안 · LLM 입력 · 허용 숫자가 같은 값을 본다.
+    # Spring이 ③ Issue를 그대로 보내 penalty 30이 "30% 느려요"를 통과시키거나, LLM이 옮기면 글이 통째로 기본 틀이 됐다 (!146 리뷰)
+    body["issues"] = [{k: v for k, v in i.items() if k not in ("penalty", "ruleId")} for i in body["issues"]]
     draft = prompts.build_draft(req.framework, body["issues"], body["code"])
     cfg = read_config(x_ai_provider, x_ai_base_url, x_ai_key, x_ai_model)
     text = prompts.polish(body, draft, cfg) if cfg else None

@@ -1,4 +1,4 @@
 rootProject.name = 'order-api'
 
-// 스타터킷은 아직 배포 전이라 이 저장소의 소스를 그대로 붙인다 (docs/starter-kit.md §6)
+// 같은 저장소의 스타터킷 소스로 빌드한다. 내 앱에 넣을 때는 README의 JitPack 의존성 한 줄을 쓴다
 includeBuild '../../starter-kit'

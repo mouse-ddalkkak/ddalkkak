@@ -9,7 +9,9 @@ import jakarta.validation.constraints.Size;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseCookie;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -51,6 +53,9 @@ public class AuthController {
 	public record TokenView(String token) {
 	}
 
+	/** 로그인 쿠키 이름 — SecurityConfig.TokenFilter 가 Authorization 헤더가 없을 때 읽는다 */
+	public static final String SESSION_COOKIE = "SESSION";
+
 	private final UserRepository users;
 
 	private final PasswordEncoder passwords;
@@ -88,12 +93,16 @@ public class AuthController {
 		return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("status", 409, "error", "이미 가입한 이메일이에요"));
 	}
 
+	// 같은 값을 body 토큰과 SESSION 쿠키로 같이 준다 — 딸깍 k6 인증의 토큰 · 쿠키 방식을 이 앱 하나로 확인한다 (딸깍 S15P31A107-230)
 	@PostMapping("/api/auth/login")
-	TokenView login(@Valid @RequestBody LoginInput input) {
+	ResponseEntity<TokenView> login(@Valid @RequestBody LoginInput input) {
 		User user = users.findByEmail(input.email())
 			.filter(u -> passwords.matches(input.password(), u.getPasswordHash()))
 			.orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "이메일이나 비밀번호가 맞지 않아요"));
-		return new TokenView(tokens.issue(user));
+		String token = tokens.issue(user);
+		// SameSite=Lax — CSRF 보호를 끈 앱이라 다른 사이트의 POST 에는 쿠키가 실리지 않게 둔다
+		ResponseCookie cookie = ResponseCookie.from(SESSION_COOKIE, token).path("/").httpOnly(true).sameSite("Lax").build();
+		return ResponseEntity.ok().header(HttpHeaders.SET_COOKIE, cookie.toString()).body(new TokenView(token));
 	}
 
 	@GetMapping("/api/users/me")

@@ -49,4 +49,8 @@ class CodeSource {
 	@Column(nullable = false)
 	boolean decompiled;
 
+	/** jar · war · zip 파일 sha256 앞 12자. 그 밖 종류는 null (-224) */
+	@Column(length = 12)
+	String fileHash;
+
 }

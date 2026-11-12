@@ -3,25 +3,31 @@ import { getIssue, getRunLogs, makePrompt } from '../../api/runs'
 import { logSection } from '../../utils/logSection'
 import LogLine from '../../components/LogLine'
 import { useLoad } from '../../hooks/useLoad'
-import { useKeys } from '../../hooks/useKeys'
 import { useApp } from '../../app/AppContext'
 import Badge from '../../components/Badge'
 import Button from '../../components/Button'
 import Panel from '../../components/Panel'
 import PromptBox from '../../components/PromptBox'
 import { AREA_NAME } from '../../utils/score'
+import { runOnce } from '../../utils/busy'
+import { sessionMemory } from '../../utils/promptMemory'
 import s from './Issue.module.css'
 
 // 7 문제 상세 + 수정 요청문 — ← 결과로 → 6 · 이전 / 다음 (응답의 prev · next)
 // "원본 로그 추가 ▸" = 같은 요청에 includeLogs: true. 붙은 줄 수는 응답에 없어(약속 ④ 빈칸) 문구에 숫자를 넣지 않는다
 const SHAPE: Record<string, string> = { constant: '일정', ramp: '점진', spike: '급증', step: '계단' }
 const chips = (text: string) => text.split(' · ').filter(Boolean)
+// 문제별 마지막 프롬프트는 sessionStorage에 두어 다른 화면에 갔다 와도 남는다 (-216)
+const memory = sessionMemory()
 
 export default function Issue({ runId, issueId }: { runId: string; issueId: string }) {
   const { showMessage } = useApp()
   const { data } = useLoad(() => getIssue(runId, issueId), [runId, issueId])
   const [fold, setFold] = useState<Record<string, boolean>>({})
-  const [prompt, setPrompt] = useState<string | null>(null)
+  const [prompt, setPrompt] = useState<string | null>(() => memory.issue(runId, issueId))
+  // 생성 요청 중: 만들기 · 다시 생성 · 원본 로그 추가를 막고 "생성 중…". 다시 그리기 전 두 번째 클릭은 ref가 막는다
+  const [busy, setBusy] = useState(false)
+  const inFlight = useRef(false)
   // 관측 근거 원문 로그 — 처음 펼칠 때 한 번 전체를 받아 이 문제 itemKey 구간만 (F-RES-06, -142)
   // 이전 / 다음은 URL이 바뀌어 App이 화면을 새로 그리므로(Fragment key) 다른 문제의 구간이 남지 않는다
   const [rawLines, setRawLines] = useState<string[] | null>(null)
@@ -37,24 +43,22 @@ export default function Issue({ runId, issueId }: { runId: string; issueId: stri
       ignore = true
     }
   }, [fold.obs, itemKey, rawLines, runId])
-  // ESC 결과로 · ENTER 프롬프트 만들기 (F-HOME-05). 만든 뒤 복사는 Tab으로 복사 버튼
-  const enter = useRef(() => {})
-  useKeys({ Escape: () => (location.hash = `#/runs/${encodeURIComponent(runId)}`), Enter: () => enter.current() })
   if (!data) return null
 
   const run = `#/runs/${encodeURIComponent(runId)}`
   const goIssue = (id: string) => (location.hash = `${run}/issues/${encodeURIComponent(id)}`)
-  const make = async (again = false, logs = false) => {
-    try {
-      const r = await makePrompt(runId, [data.id], logs)
-      setPrompt(r.text)
-      if (logs) showMessage('원본 로그를 붙였어요')
-      else if (again) showMessage('다시 생성했어요')
-    } catch {
-      // 래퍼가 문구를 띄웠다
-    }
-  }
-  enter.current = () => !prompt && make()
+  const make = (again = false, logs = false) =>
+    runOnce(inFlight, setBusy, async () => {
+      try {
+        const r = await makePrompt(runId, [data.id], logs)
+        setPrompt(r.text)
+        memory.saveIssue(runId, issueId, r.text)
+        if (logs) showMessage('원본 로그를 붙였어요')
+        else if (again) showMessage('다시 생성했어요')
+      } catch {
+        // 래퍼가 문구를 띄웠다. 생성 중 표시만 풀린다
+      }
+    })
   const section = (key: string, title: string, body: ReactNode, first = false) => (
     <>
       <button type="button" className={`${s.fold} ${first ? '' : s.foldLine}`} onClick={() => setFold((f) => ({ ...f, [key]: !f[key] }))}>
@@ -221,12 +225,14 @@ export default function Issue({ runId, issueId }: { runId: string; issueId: stri
       </div>
 
       <div className={s.makeBar}>
-        <Button onClick={() => make()}>수정 프롬프트 만들기</Button>
+        <Button onClick={() => make()} disabled={busy}>
+          {busy ? '생성 중…' : '수정 프롬프트 만들기'}
+        </Button>
         <span className={s.caption}>아래에 붙어요 ↓</span>
       </div>
       {prompt !== null && (
         <div className={s.promptWrap}>
-          <PromptBox title="수정 프롬프트" badge="1개 항목" text={prompt} onRegen={() => make(true)} onAddLogs={() => make(true, true)} />
+          <PromptBox title="수정 프롬프트" badge="1개 항목" text={prompt} onRegen={() => make(true)} onAddLogs={() => make(true, true)} busy={busy} />
         </div>
       )}
     </div>

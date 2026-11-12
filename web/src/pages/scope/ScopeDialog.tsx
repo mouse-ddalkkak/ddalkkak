@@ -4,11 +4,13 @@ import Button from '../../components/Button'
 import Input from '../../components/Input'
 import { AREA_NAME } from '../../utils/score'
 import Dialog from '../../components/Dialog'
+import AiForm from '../../components/AiForm'
+import { useApp } from '../../app/AppContext'
 import { LOAD_NAME, PRESETS, RANGES, SEVERITIES, SHAPES, TOOL_DEFAULT, estimate, type Added } from '../../utils/scopeParams'
 import s from './ScopeDialog.module.css'
 
 // 4 ✎ 설정 팝업 · "+ 추가" (screens.md 4 "설정 팝업", F-SCOPE-03~05)
-// 팝업 틀은 components/Dialog (ESC 닫기 · ENTER 적용)
+// 팝업 틀은 components/Dialog
 
 type Params = Record<string, unknown>
 
@@ -39,6 +41,10 @@ export function EditDialog({
 }) {
   const [p, setP] = useState<Params>(item.params)
   const [message, setMessage] = useState('적용했어요')
+  // AI 미연결(응답 전 포함)이면 "AI 추천으로"를 잠그고 누르면 AI 연결 팝업 — 연결되면 그 자리에서 풀린다 (-215)
+  const locked = !useApp().ai?.connected
+  const [aiOpen, setAiOpen] = useState(false)
+  const [note, setNote] = useState<string | null>(null)
   const set = (patch: Params) => {
     setP({ ...p, ...patch })
     setMessage('적용했어요')
@@ -117,11 +123,14 @@ export function EditDialog({
               size="sm"
               arrow={false}
               onClick={() => {
+                if (locked) return setAiOpen(true)
+                // AI 없이 준비한 카드의 aiParams는 기본값이다. 지금 AI를 연결해도 이 회차의 추천을 다시 받지 않으니 값을 바꾸지 않는다 (-215)
+                if (item.source === 'default') return setNote('이 회차는 AI 없이 준비했어요 · AI 추천은 다음 검사 준비부터 들어가요')
                 setP({ ...p, ...ai })
                 setMessage('AI 추천으로 맞췄어요')
               }}
             >
-              AI 추천으로
+              {locked ? '🔒 AI 추천으로' : 'AI 추천으로'}
             </Button>
           )}
           <span className={s.grow} />
@@ -135,7 +144,7 @@ export function EditDialog({
       </span>
       <div className={s.choices}>
         {PRESETS.map((x) => (
-          <Choice key={x.label} on={from === x.usersFrom && to === x.usersTo} onClick={() => set({ usersFrom: x.usersFrom, usersTo: x.usersTo })} label={x.label} sub={x.sub} />
+          <Choice key={x.label} on={from === x.usersFrom && to === x.usersTo} onClick={() => set({ usersFrom: x.usersFrom, usersTo: x.usersTo })} label={x.label} sub={locked ? x.sub.replace(' · AI 추천', '') : x.sub} />
         ))}
       </div>
       <div className={s.choices}>
@@ -156,6 +165,13 @@ export function EditDialog({
           {numInput('실패 기준 오류율(%)', 'failErrorRate', 100)}
         </div>
       </details>
+      {note && <span className={s.sub}>{note}</span>}
+      {/* 네이티브 <dialog>라 ✎ 팝업 위에 겹쳐 열리고, 닫아도 ✎ 팝업의 값은 그대로다 */}
+      {aiOpen && (
+        <Dialog title="AI 연결 · 선택" onClose={() => setAiOpen(false)}>
+          <AiForm onConnected={() => setAiOpen(false)} />
+        </Dialog>
+      )}
     </Dialog>
   )
 }

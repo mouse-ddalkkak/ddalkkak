@@ -148,8 +148,8 @@ public class ApiCollector {
 				out.add(new Param(name(header.name(), p), "header", json, required(header.required(), header.defaultValue(), optional)));
 			}
 			else if (cookie != null) {
-				// 약속 ①: 쿠키는 header 로 묶는다
-				out.add(new Param(name(cookie.name(), p), "header", json, required(cookie.required(), cookie.defaultValue(), optional)));
+				// 약속 ①: 쿠키는 cookie (-240 전에는 header 로 묶었다)
+				out.add(new Param(name(cookie.name(), p), "cookie", json, required(cookie.required(), cookie.defaultValue(), optional)));
 			}
 			else if (body != null) {
 				out.add(new Param("body", "body", json, body.required() && !optional));

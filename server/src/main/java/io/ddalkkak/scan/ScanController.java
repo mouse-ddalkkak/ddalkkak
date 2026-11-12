@@ -69,11 +69,29 @@ class ScanController {
 		return Map.of("status", runner.decide(id, "retry"));
 	}
 
-	/** 여기까지 결과로 정리 (F-STOP-03). 응답은 지금 회차 상태(running) — 정리가 끝나면 SSE done {status: partial} */
+	/**
+	 * 여기까지 결과로 정리 (F-STOP-03). 멈춤 · 도구 실패로 기다리는 회차, 또는 딸깍 재시작으로 멈춘 회차(-228). 응답은 지금 회차
+	 * 상태(running) — 정리가 끝나면 SSE done {status: partial}
+	 */
 	@PostMapping("/api/runs/{id}/finish-partial")
 	Map<String, String> finishPartial(@PathVariable String id) {
 		runs.find(id).orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND));
+		if (lifecycle.interrupted(id)) {
+			return Map.of("status", runner.resume(id, true));
+		}
 		return Map.of("status", runner.decide(id, "partial"));
+	}
+
+	/**
+	 * 딸깍 재시작으로 멈춘 회차를 멈춘 시나리오부터 이어서 (-228, F-STOP-05). 끝난 시나리오는 다시 돌리지 않는다. 그 회차의 앱이 연결돼
+	 * 있지 않으면 409 SERVICE_OFFLINE, 같은 서비스가 검사 중이면 409 RUN_IN_PROGRESS, 기다리는 회차가 아니면 404
+	 */
+	@PostMapping("/api/runs/resume")
+	Map<String, String> resume(@RequestBody StartRequest body) {
+		if (body == null || body.runId() == null || body.runId().isBlank()) {
+			throw new ApiException(ErrorCode.BAD_REQUEST);
+		}
+		return Map.of("status", runner.resume(body.runId(), false));
 	}
 
 	/**

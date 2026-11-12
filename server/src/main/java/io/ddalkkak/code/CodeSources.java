@@ -16,8 +16,8 @@ import org.springframework.stereotype.Service;
 @Service
 public class CodeSources {
 
-	/** type 은 github · jar · zip · local · none */
-	public record Info(String type, String commit, String branch, boolean decompiled) {
+	/** type 은 github · jar · zip · local · none. fileHash 는 jar · war · zip 파일 sha256 앞 12자 (-224) */
+	public record Info(String type, String commit, String branch, boolean decompiled, String ref, String fileHash) {
 	}
 
 	private final CodeSourceRepository sources;
@@ -45,13 +45,18 @@ public class CodeSources {
 	/** id 별 출처. 없는 id 는 빠진다 */
 	public Map<Long, Info> of(Collection<Long> ids) {
 		Map<Long, Info> found = new LinkedHashMap<>();
-		sources.findAllById(ids).forEach(s -> found.put(s.id, new Info(s.type, s.lastCommit, s.branch, s.decompiled)));
+		sources.findAllById(ids).forEach(s -> found.put(s.id, new Info(s.type, s.lastCommit, s.branch, s.decompiled, s.ref, s.fileHash)));
 		return found;
 	}
 
 	/** ~/.ddalkkak/work/{serviceId}/{codeSourceId}/. 있는지는 보지 않는다 */
 	public Path dir(long serviceId, long codeSourceId) {
 		return workDir.resolve(String.valueOf(serviceId)).resolve(String.valueOf(codeSourceId));
+	}
+
+	/** 마지막으로 올린 ZIP 하나를 두는 곳 ~/.ddalkkak/code/{serviceId}/source.zip — 검사 때 다시 푼다 (-224 · -242) */
+	Path keptZip(long serviceId) {
+		return workDir.resolveSibling("code").resolve(String.valueOf(serviceId)).resolve("source.zip");
 	}
 
 	/** 서비스의 작업 폴더들이 든 곳 */

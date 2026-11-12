@@ -16,16 +16,13 @@
 docker run --rm --pull always -v /var/run/docker.sock:/var/run/docker.sock -v "${HOME}:/host-home:ro" -e HOST_HOME="${HOME}" ghcr.io/mouse-ddalkkak/ddalkkak-server
 ```
 
-http://localhost:7777 을 열고 출력된 `admin` 비밀번호로 로그인합니다. 다른 컴퓨터에서는 `http://<서버 주소>:7777`로 엽니다. 같은 명령을 다시 실행하면 업그레이드됩니다. 끝에 ` uninstall`을 붙이면 데이터까지 모두 지웁니다. 비밀번호를 잊었다면 `docker exec ddalkkak ddalkkak reset-password`를 실행합니다.
+설치가 끝나면 출력된 주소(보통 http://localhost:7777)를 열고 출력된 `admin` 비밀번호로 로그인합니다. 7777을 다른 프로그램이 쓰고 있으면 7778부터 빈 포트로 열고 그 주소를 알려 줍니다. 다른 컴퓨터에서는 `http://<서버 주소>:<포트>`로 열거나 출력된 `ssh -L` 터널 명령을 씁니다. 같은 명령을 다시 실행하면 업그레이드됩니다. 끝에 ` uninstall`을 붙이면 데이터까지 모두 지웁니다. 비밀번호를 잊었다면 `docker exec ddalkkak ddalkkak reset-password`를 실행합니다.
 
-검사할 앱(Spring Boot 3.2+ MVC, Java 17+)은 딸깍과 같은 컴퓨터에서 띄웁니다. 아래 두 줄을 넣고 다시 켜면 딸깍 화면에 연결 요청이 뜹니다. Kotlin DSL과 Maven용 줄은 딸깍 화면에서 볼 수 있습니다.
+검사할 앱(Spring Boot 3.2+ MVC, Java 17+)은 딸깍과 같은 컴퓨터에서 띄우고 스타터킷을 넣습니다. [ddalkkak-starter](https://github.com/mouse-ddalkkak/ddalkkak-starter)의 Claude Code · Codex 플러그인이나 프롬프트를 쓰면 AI 코딩 도구가 넣어 줍니다. 직접 넣는 줄(Gradle · Kotlin DSL · Maven)과 딸깍 버전별 [호환 표](https://github.com/mouse-ddalkkak/ddalkkak-starter#호환-버전)도 거기 있습니다. 넣고 다시 켜면 딸깍 화면에 연결 요청이 뜹니다.
 
-```groovy
-repositories { maven { url 'https://jitpack.io' } }
-dependencies { implementation 'com.github.mouse-ddalkkak:ddalkkak:v1.1.0' }
-```
+딸깍이 7777이 아닌 포트로 열렸다면 검사할 앱에 환경 변수 `DDALKKAK_URL=http://localhost:<포트>`를 넣습니다.
 
-검사할 앱이 없다면 문제를 일부러 심어 둔 [샘플 앱](examples/order-api)으로 해 볼 수 있습니다.
+검사할 앱이 없다면 설치 명령 끝에 ` --sample`을 붙여 다시 실행합니다. 문제를 일부러 심어 둔 [샘플 앱](examples/order-api)이 같이 떠서 딸깍 화면에 연결 요청이 뜹니다.
 
 성능과 보안 검사는 실제 요청을 보내고 `ddalkkak-test-…` 계정을 만듭니다. 그래서 운영 서버가 아닌 스테이징이나 개발 서버에서 써야 합니다.
 
@@ -38,7 +35,7 @@ dependencies { implementation 'com.github.mouse-ddalkkak:ddalkkak:v1.1.0' }
 | `permission denied while trying to connect to the docker API` | Linux에서 `sudo usermod -aG docker $USER`를 실행하고 다시 로그인합니다. `sudo`로 띄우지 않습니다 |
 | `invalid reference format` 또는 `invalid spec` | cmd나 Git Bash가 아닌 PowerShell에서 실행합니다 |
 | `홈 폴더 아래에 있는 경로를 적어 주세요` | 설치 명령의 `-v "${HOME}…" -e HOST_HOME=…`이 빠졌거나 `sudo`로 띄운 경우입니다. 내 계정으로 다시 실행합니다 |
-| `Port 7777 was already in use` 또는 `port is already allocated` | 이미지 이름 앞에 `-e SERVER_PORT=7788`을 넣어 다시 실행합니다. 검사할 앱에도 `DDALKKAK_URL=http://localhost:7788`을 넣습니다 |
+| `포트 7788 을 다른 프로그램이 쓰고 있다` | 직접 넣은 `-e SERVER_PORT=…` 포트를 다른 프로그램이 쓰고 있습니다. 다른 값으로 바꾸거나 `-e SERVER_PORT`를 빼고 다시 실행하면 빈 포트를 고릅니다. 검사할 앱의 `DDALKKAK_URL`도 같은 포트로 맞춥니다 |
 | `address already in use` (8000, 15432) | 이미지 이름 앞에 `-e AI_PORT=8001 -e DB_PORT=15433`을 넣어 다시 실행합니다 |
 | 검사가 `연결 확인`에서 멈춤 | 검사할 앱을 딸깍과 같은 컴퓨터에서 띄웁니다. WSL이나 다른 VM도 다른 컴퓨터로 봅니다 |
 | 허용했던 앱이 다시 켜질 때마다 연결 요청이 다시 뜸 | 스타터킷은 허용 때 받은 토큰을 `~/.ddalkkak-kit/`에 저장합니다. 앱을 띄우는 계정이 이 폴더에 쓸 수 있게 합니다. 딸깍을 v1.1.0으로 올린 뒤라면 스타터킷도 `v1.1.0`으로 올리고 한 번 다시 허용합니다. 다시 허용은 홈의 `딸깍 검사`에서 엽니다 |

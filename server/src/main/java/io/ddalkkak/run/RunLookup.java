@@ -58,6 +58,11 @@ public class RunLookup {
 		return runs.findFirstByServiceIdAndStatusInOrderByIdDesc(serviceId, RunResults.ENDED).map(this::info);
 	}
 
+	/** 그 서비스에 검사 중(running) 회차가 있는지. 연결 해제 · 연결 점검이 본다 (-223) */
+	public boolean running(Long serviceId) {
+		return runs.countByServiceIdAndStatusIn(serviceId, List.of(RunStatus.RUNNING.value())) > 0;
+	}
+
 	/** 아직 코드 작업 폴더를 쓰는 회차(준비 중 · 준비됨 · 검사 중)의 code_source id. 코드 가져오기가 안 쓰는 폴더를 지울 때 본다 */
 	public Set<Long> activeCodeSourceIds(Long serviceId) {
 		return runs.findByServiceIdAndStatusIn(serviceId, List.of(RunStatus.PREPARING.value(), RunStatus.READY.value(), RunStatus.RUNNING.value()))

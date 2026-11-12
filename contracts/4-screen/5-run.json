@@ -192,7 +192,7 @@
       }
     },
     "POST /api/runs/{id}/stop": {
-      "summary": "5 중단 (ESC · 오류 팝업 \"중단\")",
+      "summary": "5 중단 (\"중단\" · 오류 팝업 \"중단\")",
       "owner": [
         "B3"
       ],
@@ -210,7 +210,7 @@
       }
     },
     "POST /api/runs/{id}/retry": {
-      "summary": "5 오류 팝업 \"다시 시도\" — 멈춘 항목부터",
+      "summary": "5 오류 팝업 \"다시 시도\" — 멈춘 · 실패한 항목부터",
       "owner": [
         "B3"
       ],
@@ -225,7 +225,7 @@
       }
     },
     "POST /api/runs/{id}/finish-partial": {
-      "summary": "5 오류 팝업 \"여기까지 결과 보기\" — 일부 완료",
+      "summary": "5 오류 팝업 · 1 · 5 \"이어서 검사할까요?\"의 \"여기까지 결과 보기\" — 일부 완료",
       "owner": [
         "B3"
       ],
@@ -239,6 +239,36 @@
         "404": {
           "code": "NOT_FOUND",
           "message": "찾을 수 없어요"
+        },
+        "409": {
+          "code": "RUN_IN_PROGRESS",
+          "message": "이미 검사 중이에요"
+        }
+      }
+    },
+    "POST /api/runs/resume": {
+      "summary": "1 · 5 \"이어서 검사할까요?\" → 이어서 검사 — 멈춘 시나리오부터",
+      "owner": [
+        "B2"
+      ],
+      "request": {
+        "runId": "run_6"
+      },
+      "responses": {
+        "200": {
+          "status": "running"
+        },
+        "404": {
+          "code": "NOT_FOUND",
+          "message": "찾을 수 없어요"
+        },
+        "409 running": {
+          "code": "RUN_IN_PROGRESS",
+          "message": "이미 검사 중이에요"
+        },
+        "409 offline": {
+          "code": "SERVICE_OFFLINE",
+          "message": "앱이 꺼져 있어요"
         }
       }
     },

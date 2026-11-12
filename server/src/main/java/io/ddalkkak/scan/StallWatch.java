@@ -56,7 +56,7 @@ class StallWatch {
 			}
 		}
 		HttpClient http = HttpClient.newBuilder().connectTimeout(timeout).build();
-		HttpRequest request = HttpRequest.newBuilder(uri).timeout(timeout).GET().build();
+		HttpRequest request = HttpRequest.newBuilder(uri).timeout(timeout).header(K6Script.SCAN_HEADER, K6Script.SCAN_VALUE).GET().build();
 		// 닫기와 알림을 같은 잠금으로 — 닫은 뒤(도구가 끝난 뒤)에는 알리지 않는다. 늦게 온 알림이 다음 시나리오를 멈추지 않게 (!74 리뷰 6-3)
 		Object lock = new Object();
 		boolean[] closed = { false };

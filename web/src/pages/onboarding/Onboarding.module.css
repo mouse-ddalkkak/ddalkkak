@@ -1,6 +1,4 @@
 .wrap{width:100%;max-width:1440px;margin:0 auto;display:flex;flex-direction:column;gap:32px}
-.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,600px),1fr));gap:36px;align-items:stretch}
-.col{display:flex;flex-direction:column;gap:32px;min-width:0}
 .kit{gap:26px}
 .tabs{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .tab{appearance:none;margin:0;padding:8px 12px;border:4px solid var(--ink-700);background:transparent;color:var(--ink-300);font:var(--type-small);letter-spacing:2px;white-space:nowrap;cursor:pointer}
@@ -12,6 +10,9 @@
 .lineRow{display:flex;gap:12px;align-items:stretch}
 .line{flex:1;min-width:0;display:flex;align-items:center;gap:12px;padding:14px 16px;background:var(--ink-900);border:4px solid var(--ink-700);font:var(--type-caption);color:var(--white);overflow-wrap:anywhere;white-space:pre-wrap}
 .prompt{color:var(--red-500)}
+.tool{display:flex;flex-direction:column;gap:12px}
+.cmd{color:var(--white)}
+.link{color:var(--cyan-300)}
 .dash{border-top:4px dashed var(--ink-600)}
 .kitHead{display:flex;align-items:center;gap:16px;flex-wrap:wrap}
 .kitTitle{flex:1;min-width:0;font:var(--type-small);font-size:16.5px;color:var(--cyan-300);letter-spacing:2px;line-height:1.35}
@@ -22,8 +23,15 @@
 .led{padding-top:4px;flex:none}
 .reqText{display:flex;flex-direction:column;gap:10px;min-width:0}
 .reqTitle{font:var(--type-label);letter-spacing:2px;color:var(--white);line-height:1.3}
+.request[data-warn]{border-color:var(--amber-400)}
+.listHead{display:flex;align-items:center;gap:16px}
+.list{display:flex;flex-direction:column;gap:8px}
+.row{display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:14px 18px;border:4px solid var(--ink-700);background:var(--ink-900);color:inherit;text-align:left;cursor:pointer;min-width:0}
+.row[data-on]{border-color:var(--green-400)}
+.rowName{font:var(--type-label);letter-spacing:2px;color:var(--white)}
+.warn{font:var(--type-caption);color:var(--amber-400)}
 .reqActions{display:flex;align-items:center;gap:16px;flex-wrap:wrap}
 .done{display:inline-flex;align-items:center;gap:14px;padding:14px 20px;border:4px solid var(--green-400);color:var(--green-400);font:var(--type-body);letter-spacing:2px;white-space:nowrap}
 .doneDot{width:16px;height:16px;flex:none;background:var(--green-400)}
-.aiHead{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap}
 .foot{display:flex;align-items:center;gap:20px;padding-top:26px;border-top:4px solid var(--ink-700)}
+.dlgText{font:var(--type-caption);line-height:1.6;color:var(--ink-100)}

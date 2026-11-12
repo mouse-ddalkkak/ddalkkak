@@ -1,33 +1,4 @@
-// 화면 키 판단 (functional-spec F-HOME-05) — React 없는 순수 모듈이라 web/test/keys.test.ts가 돌린다
-export type PageKey = 'Enter' | 'Escape' | 'ArrowUp' | 'ArrowDown'
-
-type Target = { tagName?: string; isContentEditable?: boolean; getAttribute?: (name: string) => string | null } | null
-export type KeyLike = {
-  key: string
-  target: Target | EventTarget | null
-  isComposing?: boolean
-  repeat?: boolean
-  ctrlKey?: boolean
-  altKey?: boolean
-  metaKey?: boolean
-  shiftKey?: boolean
-}
-
-const KEYS: string[] = ['Enter', 'Escape', 'ArrowUp', 'ArrowDown']
-const TYPING = ['INPUT', 'TEXTAREA', 'SELECT']
-const CLICKABLE = ['BUTTON', 'A', 'SUMMARY']
-
-/** 화면이 쓸 키. 입력칸 · 열린 팝업 · 한글 조합 · 수정 키는 무시, 버튼 위 ENTER는 그 버튼 몫 */
-export function pageKey(e: KeyLike, dialogOpen: boolean): PageKey | null {
-  if (!KEYS.includes(e.key) || dialogOpen) return null
-  if (e.isComposing || e.ctrlKey || e.altKey || e.metaKey || e.shiftKey) return null
-  if (e.repeat && (e.key === 'Enter' || e.key === 'Escape')) return null
-  const t = e.target as Target
-  const tag = t?.tagName ?? ''
-  if (TYPING.includes(tag) || t?.isContentEditable) return null
-  if (e.key === 'Enter' && (CLICKABLE.includes(tag) || t?.getAttribute?.('role') === 'button')) return null
-  return e.key as PageKey
-}
+// div 버튼 · 5 오류 팝업 Tab — React 없는 순수 모듈이라 web/test/keys.test.ts가 돌린다
 
 /** div를 버튼처럼: Tab으로 오고 ENTER · 스페이스로 누른다. 안쪽 버튼에서 온 키는 그 버튼 몫 */
 export function pressable(fn: () => void) {

@@ -18,7 +18,7 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 /**
  * 검사 회차의 진행 상태 (docs/scan.md §1 · §8 · openapi RunProgress · ProgressEvent · LogLine · DoneEvent). 메모리에만 둔다 —
- * 서버가 다시 켜지면 running 회차는 stopped 가 되니(run-flow §1) 다시 만들 일이 없다.
+ * 서버가 다시 켜지면 running 회차는 stopped 가 되고(run-flow §1), 사용자가 이어서 검사를 고르면(-228) 새로 만든다.
  * <p>
  * 단계 트리 · 진행률 · 남은 시간 · 최근 로그 200줄(링버퍼) · SSE 구독자를 회차마다 한 벌 둔다. 이벤트에는 트리가 없고 화면은 step · item 이 바뀌면
  * /progress 를 다시 받는다
@@ -35,6 +35,12 @@ class ScanProgress {
 			"code", "3 코드 품질", "report", "결과 정리");
 
 	static final ZoneId ZONE = ZoneId.of("Asia/Seoul");
+
+	/** SSE error 문구 — 고객 앱이 응답을 멈춤 (F-STOP-02) */
+	static final String STALLED = "서버가 응답을 멈췄어요";
+
+	/** SSE error 문구 — 자동으로 한 번 더 돌려도 도구가 돌지 못함(도구 받기 실패 · 도구 오류), 뒤에 " · 사유" (-228) */
+	static final String TOOL_FAILED = "검사 도구가 실패했어요";
 
 	record ProgressEvent(int pct, int leftMin, String step, String item) {
 	}
@@ -156,6 +162,9 @@ class ScanProgress {
 		/** "여기까지 결과 보기"를 골랐다 — 남은 시나리오는 중단됨, 회차는 partial */
 		volatile boolean partial;
 
+		/** 도구 실패로 자동으로 한 번 더 돌린 시나리오 — 시나리오마다 한 번. 팝업 "다시 시도"로 지우지 않는다 (-228) */
+		final java.util.Set<String> retried = ConcurrentHashMap.newKeySet();
+
 		/** 멈춘 뒤 고른 것: retry · partial (중단은 stop 이 검사 스레드를 인터럽트한다) */
 		final java.util.concurrent.BlockingQueue<String> decisions = new java.util.concurrent.LinkedBlockingQueue<>();
 
@@ -178,11 +187,7 @@ class ScanProgress {
 	RunState open(String runId, List<ScenarioStore.Item> scope) {
 		RunState run = new RunState(runId);
 		for (ScenarioStore.Item item : scope) {
-			String step = switch (item.area()) {
-				case "perf" -> "perf";
-				case "code" -> "code";
-				default -> isAccount(item) ? "auth" : "sec";
-			};
+			String step = stepOf(item);
 			double weight = 1;
 			double minutes = 1;
 			if (step.equals("perf")) {
@@ -194,6 +199,15 @@ class ScanProgress {
 		}
 		runs.put(runId, run);
 		return run;
+	}
+
+	/** 시나리오가 도는 단계: 성능 · 코드 품질 · 테스트 계정(계정 만들기) · 1 보안 */
+	static String stepOf(ScenarioStore.Item item) {
+		return switch (item.area()) {
+			case "perf" -> "perf";
+			case "code" -> "code";
+			default -> isAccount(item) ? "auth" : "sec";
+		};
 	}
 
 	static boolean isAccount(ScenarioStore.Item item) {
@@ -257,14 +271,14 @@ class ScanProgress {
 	}
 
 	/**
-	 * 서버 응답 멈춤 (F-STOP-02) — SSE error 를 보내고 고를 때까지 기억한다. lines 는 그 태그 로그 중 그 시나리오가 시작된 줄부터 최근
-	 * {@link #STOP_LINES}줄
+	 * 서버 응답 멈춤 (F-STOP-02) · 도구 실패 (-228) — SSE error 를 보내고 고를 때까지 기억한다. lines 는 그 태그 로그 중 그 시나리오가
+	 * 시작된 줄부터 최근 {@link #STOP_LINES}줄
 	 */
-	StopEvent error(RunState run, String step, ScenarioStore.Item item, String tag, List<String> raw) {
+	StopEvent error(RunState run, String step, ScenarioStore.Item item, String tag, List<String> raw, String text) {
 		// 직전 로그 = 도구가 멈추기 직전 출력(그 시나리오 원본 로그 끝) — "시각 [태그] 줄", 시각은 멈춤을 잡은 때 (!74 리뷰 6-1 · 7-1)
 		OffsetDateTime at = OffsetDateTime.now(ZONE);
 		StopEvent event = new StopEvent(step, item.key(), item.title(), at.truncatedTo(ChronoUnit.SECONDS).toString(),
-				"서버가 응답을 멈췄어요", stopLines(at, tag, raw));
+				text, stopLines(at, tag, raw));
 		synchronized (run.emitters) {
 			run.decisions.clear();
 			run.paused = event;

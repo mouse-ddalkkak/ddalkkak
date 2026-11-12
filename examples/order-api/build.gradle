@@ -2,7 +2,7 @@ plugins {
 	id 'java'
 	id 'org.springframework.boot' version '3.2.12'
 	id 'io.spring.dependency-management' version '1.1.7'
-	// jar 에 git.properties → 스타터킷이 실행 중 커밋을 딸깍에 알린다 (2-b 버전 비교, S15P31A107-147)
+	// jar 에 git.properties → 스타터킷이 실행 중 커밋을 딸깍에 알린다 (실행 중인 버전과 코드가 같은지 비교)
 	id 'com.gorylenko.gradle-git-properties' version '4.0.1'
 }
 

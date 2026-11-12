@@ -20,10 +20,14 @@ import org.springframework.web.servlet.HandlerMapping;
  * 요청마다 API(메서드 + path 패턴)별 호출 수 · DB 조회 수 · 커넥션 대기 시간을 센다. DB 쪽 숫자는 {@link DbMeter} 가 지금
  * 스레드의 요청에 더한다.
  * <p>
- * 호출 수는 앱이 켜진 뒤 누적이다 (약속 ① ApiEndpoint.calls). 측정 중({@link #open()} ~ {@link #close()})에는 1초 묶음에도
- * 따로 쌓고 {@link MeasureSender} 가 {@link #drain()} 으로 꺼낸다
+ * 호출 수는 앱이 켜진 뒤 사용자 요청 누적이다 (약속 ① ApiEndpoint.calls). 딸깍 검사 요청({@link #SCAN_HEADER})은 누적에 넣지
+ * 않는다 — 검사할수록 k6 · ZAP 요청이 호출 수 순위를 덮지 않게 (-246). 측정 중({@link #open()} ~ {@link #close()})에는 검사 요청까지
+ * 1초 묶음에 따로 쌓고 {@link MeasureSender} 가 {@link #drain()} 으로 꺼낸다
  */
 public class RequestMeter implements HandlerInterceptor {
+
+	/** 딸깍이 대상 앱에 보내는 모든 요청에 붙이는 표시 (scan.md §2-3). 있는지만 본다 */
+	static final String SCAN_HEADER = "X-Ddalkkak-Scan";
 
 	// [DB 조회 수, 커넥션 대기 ns]. 요청 밖(시작 시 데이터 넣기 · 스케줄러)의 DB 조회는 세지 않는다
 	private static final ThreadLocal<long[]> current = new ThreadLocal<>();
@@ -101,7 +105,9 @@ public class RequestMeter implements HandlerInterceptor {
 			return;
 		}
 		String api = request.getMethod() + " " + pattern;
-		add(totals, api, c);
+		if (request.getHeader(SCAN_HEADER) == null) {
+			add(totals, api, c);
+		}
 		Map<String, Totals> w = window;
 		if (w != null) {
 			add(w, api, c);

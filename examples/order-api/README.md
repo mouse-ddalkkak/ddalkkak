@@ -6,6 +6,8 @@ Spring Boot 3.2 · Java 17 · PostgreSQL. 스타터킷은 이 저장소의 `star
 
 ## 실행
 
+딸깍 설치 명령 끝에 ` --sample`을 붙이면 이 앱과 DB가 컨테이너로 같이 뜬다(딸깍 README). 소스에서 띄우려면:
+
 ```bash
 cd examples/order-api
 docker compose up -d        # PostgreSQL (localhost:5433, 딸깍 DB와 별개)
@@ -44,10 +46,11 @@ for i in $(seq 10); do curl -s -o /dev/null localhost:8080/api/products/$i; done
 | --- | --- | --- |
 | perf-1 · perf-2 · perf-3 | k6 | `GET /api/orders` · `GET /api/products` · `GET /api/products/{id}` |
 | sec-1 | 테스트 계정 2개 | — |
-| sec-2 | ZAP | `GET /api/orders` |
+| sec-2 | 권한 점검(남의 데이터 보기) | `GET /api/orders/{id}` — 로그인이 필요한 `{id}` GET을 호출 수와 상관없이 먼저 고른다(공개인 `GET /api/products/{id}`가 아니라) |
+| sec-3 | ZAP | `GET /api/orders` |
 | code-1 | Semgrep | 전체 (코드 연결했을 때) |
 
-④ · ⑤는 호출 수와 상관없이 권한 점검이 잡는다.
+④(남의 주문 보기)는 sec-2 권한 점검이 잡고, ⑤(관리자 API)는 호출 수와 상관없이 권한 점검 줄에 덧붙어 잡는다.
 
 ## 시드 데이터
 
@@ -72,7 +75,7 @@ for i in $(seq 10); do curl -s -o /dev/null localhost:8080/api/products/$i; done
 | `POST /api/orders` · `GET /api/orders` (`q` 검색) · `GET /api/orders/{id}` | 필요 |
 | `GET /api/admin/users` · `GET /api/admin/orders` · `GET /api/admin/stats` | 없음 (⑤) |
 
-로그인은 `Authorization: Bearer <token>`. 로그인 규칙은 `SecurityConfig`의 URL 규칙(`requestMatchers`)으로 건다.
+로그인은 `Authorization: Bearer <token>` 또는 로그인 응답의 `SESSION` 쿠키(`Cookie: SESSION=<token>`, 같은 값 · HttpOnly · SameSite=Lax) — 딸깍 로그인 설정의 토큰 · 쿠키 방식을 이 앱 하나로 확인하려고 둘 다 받는다. 로그인 규칙은 `SecurityConfig`의 URL 규칙(`requestMatchers`)으로 건다.
 
 ## 심은 문제
 

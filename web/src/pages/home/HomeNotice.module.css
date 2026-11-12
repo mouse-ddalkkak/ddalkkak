@@ -1,0 +1,3 @@
+.text{font:var(--type-caption);line-height:1.6;color:var(--ink-100)}
+.warn{font:var(--type-caption);color:var(--amber-400)}
+.grow{flex:1}

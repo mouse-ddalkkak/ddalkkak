@@ -2,7 +2,6 @@ import { useState } from 'react'
 import { ackSetup, getSetup } from '../../api/setup'
 import { useLoad } from '../../hooks/useLoad'
 import { useCopy } from '../../hooks/useCopy'
-import { useKeys } from '../../hooks/useKeys'
 import Button from '../../components/Button'
 import Checkbox from '../../components/Checkbox'
 import TitleFrame from '../../components/TitleFrame'
@@ -25,7 +24,6 @@ export default function Setup() {
       setBusy(false)
     }
   }
-  useKeys({ Enter: () => saved && !busy && next() })
 
   return (
     <div className={s.wrap}>
@@ -56,7 +54,7 @@ export default function Setup() {
           저장했어요
         </Checkbox>
         <Button disabled={!saved || busy} onClick={next} className={s.go}>
-          로그인하고 시작하기
+          로그인하러 가기
         </Button>
       </section>
     </div>

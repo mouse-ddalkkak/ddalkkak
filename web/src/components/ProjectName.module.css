@@ -1,0 +1,8 @@
+.view{display:inline-flex;align-items:center;gap:12px;min-width:0}
+.name{min-width:0;overflow-wrap:anywhere}
+.edit{appearance:none;margin:0;padding:2px 8px;border:2px solid var(--ink-600);background:transparent;color:var(--ink-300);font:var(--type-small);line-height:1.2;cursor:pointer}
+.edit:hover{border-color:var(--cyan-300);color:var(--cyan-300)}
+.form{margin:0;display:inline-flex;align-items:center;gap:10px;flex-wrap:wrap}
+.ok,.cancel{appearance:none;margin:0;padding:8px 14px;border:4px solid var(--ink-50);background:var(--ink-900);color:var(--white);font:var(--type-small);letter-spacing:1px;cursor:pointer}
+.ok{border-color:var(--cyan-300);color:var(--cyan-300)}
+.ok:disabled,.cancel:disabled{opacity:.4;cursor:default}

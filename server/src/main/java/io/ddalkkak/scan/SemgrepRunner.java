@@ -120,9 +120,13 @@ public class SemgrepRunner {
 				}
 			}
 			List<String> lines = new ArrayList<>();
-			lines.add("== " + keys + " · exit=" + r.exitCode());
+			boolean pullFailed = r.failure() == DockerTool.Failure.PULL;
+			lines.add("== " + keys + " · exit=" + r.exitCode() + (pullFailed ? " · 받기 실패 → " + K6Runner.PULL_FAILED : ""));
 			lines.addAll(r.lines());
 			writer.append(rows.getFirst(), lines);
+			if (pullFailed) {
+				return skipAll(rows, K6Runner.PULL_FAILED);
+			}
 
 			// semgrep 은 발견이 있어도 0 으로 끝난다(--error 를 안 걸었다). 1 도 정상으로 보고, 2 이상은 실행 오류
 			boolean finished = r.exitCode() == 0 || r.exitCode() == 1;

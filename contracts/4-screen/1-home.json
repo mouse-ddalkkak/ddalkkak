@@ -1,9 +1,9 @@
 {
-  "screen": "1 홈 (10초마다)",
+  "screen": "1 홈 (10초마다 · 도구 상태 팝업 · 딸깍 검사는 저장한 코드 연결이 있으면 바로 준비, 없으면 0-3 ④)",
   "source": "docs/openapi.yaml ④ 예시에서 뽑음 · 고칠 때는 openapi.yaml을 고치고 python scripts/screen_contracts.py",
   "calls": {
     "GET /api/home": {
-      "summary": "1 홈 — 서버 상태 · 서비스 줄 · 지난 검사 (10초마다)",
+      "summary": "1 홈 — 서버 상태 · 서비스 줄 · 지난 검사 (10초마다) · 0-3 연결 여부 · 해제 안내 (0-3에 있는 동안 5초마다)",
       "owner": [
         "B2"
       ],
@@ -15,7 +15,12 @@
             "host": "localhost",
             "port": 8080,
             "connected": true,
-            "apiCount": 14
+            "apiCount": 14,
+            "disconnect": {
+              "failures": 0,
+              "needsConfirm": false,
+              "lastCheckedAt": "2026-11-07T15:09:50+09:00"
+            }
           },
           "health": {
             "cpu": 0.23,
@@ -34,23 +39,29 @@
             "runId": "run_5",
             "at": "2026-11-07T14:35:00+09:00",
             "scores": {
-              "perf": 68,
-              "sec": 79,
-              "code": 92
+              "perf": 80,
+              "sec": 70,
+              "code": 90
             },
             "topDanger": "보안 1 · SQL 문자열 연결",
-            "topWarn": "성능 2 · N+1 의심 · 커넥션 풀 대기",
+            "topWarn": "성능 2 · N+1 의심 · 커넥션 풀 대기\n코드 품질 1 · 빈 catch",
             "passed": 35,
             "skipped": {
               "count": 11,
               "reason": "계정 없음"
             }
+          },
+          "run": {
+            "state": "none",
+            "runId": null,
+            "interruptedAt": null
           }
         },
         "200 notConnected": {
           "service": null,
           "health": null,
-          "lastRun": null
+          "lastRun": null,
+          "run": null
         },
         "200 offline": {
           "service": {
@@ -59,15 +70,134 @@
             "host": "localhost",
             "port": 8080,
             "connected": false,
-            "apiCount": 14
+            "apiCount": 14,
+            "disconnect": {
+              "failures": 1,
+              "needsConfirm": false,
+              "lastCheckedAt": "2026-11-07T15:09:50+09:00"
+            }
           },
           "health": null,
-          "lastRun": null
+          "lastRun": null,
+          "run": {
+            "state": "none",
+            "runId": null,
+            "interruptedAt": null
+          }
+        },
+        "200 disconnectAsk": {
+          "service": {
+            "id": "svc_1",
+            "name": "order-api",
+            "host": "localhost",
+            "port": 8080,
+            "connected": false,
+            "apiCount": 14,
+            "disconnect": {
+              "failures": 3,
+              "needsConfirm": true,
+              "lastCheckedAt": "2026-11-07T15:10:50+09:00"
+            }
+          },
+          "health": null,
+          "lastRun": null,
+          "run": {
+            "state": "none",
+            "runId": null,
+            "interruptedAt": null
+          }
+        },
+        "200 runRunning": {
+          "service": {
+            "id": "svc_1",
+            "name": "order-api",
+            "host": "localhost",
+            "port": 8080,
+            "connected": true,
+            "apiCount": 14,
+            "disconnect": null
+          },
+          "health": null,
+          "lastRun": null,
+          "run": {
+            "state": "running",
+            "runId": "run_6",
+            "interruptedAt": null
+          }
+        },
+        "200 interrupted": {
+          "service": {
+            "id": "svc_1",
+            "name": "order-api",
+            "host": "localhost",
+            "port": 8080,
+            "connected": true,
+            "apiCount": 14,
+            "disconnect": null
+          },
+          "health": null,
+          "lastRun": {
+            "runId": "run_6",
+            "at": "2026-11-07T15:02:00+09:00",
+            "scores": {
+              "perf": null,
+              "sec": null,
+              "code": null
+            },
+            "topDanger": null,
+            "topWarn": null,
+            "passed": 0,
+            "skipped": {
+              "count": 46,
+              "reason": null
+            }
+          },
+          "run": {
+            "state": "interrupted",
+            "runId": "run_6",
+            "interruptedAt": {
+              "step": "perf",
+              "name": "2 성능"
+            }
+          }
+        },
+        "200 runDone": {
+          "service": {
+            "id": "svc_1",
+            "name": "order-api",
+            "host": "localhost",
+            "port": 8080,
+            "connected": true,
+            "apiCount": 14,
+            "disconnect": null
+          },
+          "health": null,
+          "lastRun": {
+            "runId": "run_5",
+            "at": "2026-11-07T14:35:00+09:00",
+            "scores": {
+              "perf": 80,
+              "sec": 70,
+              "code": 90
+            },
+            "topDanger": "보안 1 · SQL 문자열 연결",
+            "topWarn": "성능 2 · N+1 의심 · 커넥션 풀 대기\n코드 품질 1 · 빈 catch",
+            "passed": 35,
+            "skipped": {
+              "count": 11,
+              "reason": "계정 없음"
+            }
+          },
+          "run": {
+            "state": "done",
+            "runId": "run_5",
+            "interruptedAt": null
+          }
         }
       }
     },
     "GET /api/services/requests": {
-      "summary": "0-3 연결 요청 카드 (5초마다)",
+      "summary": "0-3 ② 연결할 수 있는 서비스 목록 · 다시 찾기 (5초마다)",
       "owner": [
         "B2"
       ],
@@ -86,6 +216,230 @@
             "requestedAt": "2026-10-31T10:02:11+09:00"
           }
         ]
+      }
+    },
+    "POST /api/services/{id}/disconnect": {
+      "summary": "1 · 0-3 ② 연결 해제 (해제 안내 · 409 모달에서 사용자가 확인했을 때만)",
+      "owner": [
+        "B2"
+      ],
+      "responses": {
+        "204": null,
+        "404": {
+          "code": "NOT_FOUND",
+          "message": "찾을 수 없어요"
+        },
+        "409": {
+          "code": "RUN_IN_PROGRESS",
+          "message": "이미 검사 중이에요"
+        }
+      }
+    },
+    "GET /api/tools": {
+      "summary": "1 홈 \"도구 상태\" 팝업 — k6 · ZAP · Semgrep 설치 · 실행 가능 · 최근 오류",
+      "owner": [
+        "B3"
+      ],
+      "responses": {
+        "200 ok": {
+          "tools": [
+            {
+              "name": "k6",
+              "image": "grafana/k6:1.8.1",
+              "state": "ok",
+              "installed": true,
+              "runnable": true,
+              "checkedAt": "2026-11-11T10:00:00+09:00",
+              "lastError": null,
+              "fix": null
+            },
+            {
+              "name": "zap",
+              "image": "zaproxy/zap-stable:2.16.1",
+              "state": "ok",
+              "installed": true,
+              "runnable": true,
+              "checkedAt": "2026-11-11T10:00:00+09:00",
+              "lastError": null,
+              "fix": null
+            },
+            {
+              "name": "semgrep",
+              "image": "semgrep/semgrep:1.180.0",
+              "state": "ok",
+              "installed": true,
+              "runnable": true,
+              "checkedAt": "2026-11-11T10:00:00+09:00",
+              "lastError": null,
+              "fix": null
+            }
+          ]
+        },
+        "200 notInstalled": {
+          "tools": [
+            {
+              "name": "k6",
+              "image": "grafana/k6:1.8.1",
+              "state": "not_installed",
+              "installed": false,
+              "runnable": false,
+              "checkedAt": "2026-11-11T10:00:00+09:00",
+              "lastError": null,
+              "fix": "첫 검사 때 받아요. 미리 받으려면 docker pull grafana/k6:1.8.1"
+            },
+            {
+              "name": "zap",
+              "image": "zaproxy/zap-stable:2.16.1",
+              "state": "not_installed",
+              "installed": false,
+              "runnable": false,
+              "checkedAt": "2026-11-11T10:00:00+09:00",
+              "lastError": null,
+              "fix": "첫 검사 때 받아요. 미리 받으려면 docker pull zaproxy/zap-stable:2.16.1"
+            },
+            {
+              "name": "semgrep",
+              "image": "semgrep/semgrep:1.180.0",
+              "state": "not_installed",
+              "installed": false,
+              "runnable": false,
+              "checkedAt": "2026-11-11T10:00:00+09:00",
+              "lastError": null,
+              "fix": "첫 검사 때 받아요. 미리 받으려면 docker pull semgrep/semgrep:1.180.0"
+            }
+          ]
+        },
+        "200 pullFailed": {
+          "tools": [
+            {
+              "name": "k6",
+              "image": "grafana/k6:1.8.1",
+              "state": "ok",
+              "installed": true,
+              "runnable": true,
+              "checkedAt": "2026-11-11T10:00:00+09:00",
+              "lastError": null,
+              "fix": null
+            },
+            {
+              "name": "zap",
+              "image": "zaproxy/zap-stable:2.16.1",
+              "state": "not_installed",
+              "installed": false,
+              "runnable": false,
+              "checkedAt": "2026-11-11T10:00:00+09:00",
+              "lastError": {
+                "stage": "pull",
+                "reason": "도구 받기 실패",
+                "cause": "Error response from daemon: Get \"https://registry-1.docker.io/v2/\": EOF",
+                "runId": "run_5",
+                "at": "2026-11-11T09:40:12+09:00"
+              },
+              "fix": "네트워크를 확인하고 docker pull zaproxy/zap-stable:2.16.1 로 다시 받은 뒤 재검사하세요"
+            },
+            {
+              "name": "semgrep",
+              "image": "semgrep/semgrep:1.180.0",
+              "state": "ok",
+              "installed": true,
+              "runnable": true,
+              "checkedAt": "2026-11-11T10:00:00+09:00",
+              "lastError": null,
+              "fix": null
+            }
+          ]
+        }
+      }
+    },
+    "GET /api/code-source": {
+      "summary": "저장한 코드 연결 방식 (0-3 ④ · 홈 코드 줄)",
+      "owner": [
+        "B2"
+      ],
+      "responses": {
+        "200 previous": {
+          "last": {
+            "type": "github",
+            "ref": "https://github.com/owner/order-api",
+            "branch": "main",
+            "lastCommit": "a3f9c1",
+            "lastCommitAt": "2026-11-07T12:10:00+09:00",
+            "lastFetchedAt": "2026-11-07T14:00:00+09:00",
+            "sameVersion": true,
+            "decompiled": false,
+            "fileHash": null
+          }
+        },
+        "200 noSaved": {
+          "last": null
+        }
+      }
+    },
+    "POST /api/runs/prepare": {
+      "summary": "3 준비 시작 — 회차 만들기",
+      "owner": [
+        "B2"
+      ],
+      "responses": {
+        "200": {
+          "runId": "run_5"
+        },
+        "409 offline": {
+          "code": "SERVICE_OFFLINE",
+          "message": "앱이 꺼져 있어요"
+        },
+        "409 running": {
+          "code": "RUN_IN_PROGRESS",
+          "message": "이미 검사 중이에요"
+        }
+      }
+    },
+    "POST /api/runs/resume": {
+      "summary": "1 · 5 \"이어서 검사할까요?\" → 이어서 검사 — 멈춘 시나리오부터",
+      "owner": [
+        "B2"
+      ],
+      "request": {
+        "runId": "run_6"
+      },
+      "responses": {
+        "200": {
+          "status": "running"
+        },
+        "404": {
+          "code": "NOT_FOUND",
+          "message": "찾을 수 없어요"
+        },
+        "409 running": {
+          "code": "RUN_IN_PROGRESS",
+          "message": "이미 검사 중이에요"
+        },
+        "409 offline": {
+          "code": "SERVICE_OFFLINE",
+          "message": "앱이 꺼져 있어요"
+        }
+      }
+    },
+    "POST /api/runs/{id}/finish-partial": {
+      "summary": "5 오류 팝업 · 1 · 5 \"이어서 검사할까요?\"의 \"여기까지 결과 보기\" — 일부 완료",
+      "owner": [
+        "B3"
+      ],
+      "responses": {
+        "200 running": {
+          "status": "running"
+        },
+        "200 partial": {
+          "status": "partial"
+        },
+        "404": {
+          "code": "NOT_FOUND",
+          "message": "찾을 수 없어요"
+        },
+        "409": {
+          "code": "RUN_IN_PROGRESS",
+          "message": "이미 검사 중이에요"
+        }
       }
     }
   }

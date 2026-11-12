@@ -18,14 +18,26 @@ class ConnectRequestController {
 	record Approved(String serviceId, String name) {
 	}
 
+	/** 연결 점검 연속 실패 (-223). 아직 점검 전이면 0 · lastCheckedAt null */
+	record Disconnect(int failures, boolean needsConfirm, OffsetDateTime lastCheckedAt) {
+	}
+
 	/** host · port 는 화면이 다시 허용할 연결 요청(이름 · host · port 가 같은)을 찾을 때 쓴다 (-211) */
-	record HomeService(String id, String name, String host, int port, boolean connected, Integer apiCount) {
+	record HomeService(String id, String name, String host, int port, boolean connected, Integer apiCount, Disconnect disconnect) {
 	}
 
 	record HomeHealth(double cpu, ServiceRegistry.Mem mem, ServiceRegistry.Disk disk, long uptimeSec, OffsetDateTime serverTime) {
 	}
 
-	record Home(HomeService service, HomeHealth health, RunHistory.LastRun lastRun) {
+	/** step · name 은 GET /api/runs/{id}/progress steps 의 값 */
+	record Interrupted(String step, String name) {
+	}
+
+	/** 홈 검사 상태 none · running · interrupted · done. RunHistory.state(-214), interrupted 는 -228 (docs/openapi.yaml Home.run) */
+	record HomeRun(String state, String runId, Interrupted interruptedAt) {
+	}
+
+	record Home(HomeService service, HomeHealth health, RunHistory.LastRun lastRun, HomeRun run) {
 	}
 
 	private final ServiceRegistry registry;
@@ -60,7 +72,19 @@ class ConnectRequestController {
 		registry.ignore(id);
 	}
 
-	/** 연결 안 됐으면 service null, 끊겼으면 connected false · health null, 검사가 없으면 lastRun null */
+	private static HomeRun homeRun(RunHistory.RunState state) {
+		return new HomeRun(state.state(), state.runId(),
+				state.interruptedAt() == null ? null : new Interrupted(state.interruptedAt().step(), state.interruptedAt().name()));
+	}
+
+	/** 연결 안 됐으면 service · run null, 끊겼으면 connected false · health null, 검사가 없으면 lastRun null */
+	/** 해제 안내 · 409 모달에서 사용자가 확인했을 때만 (F-CONN-09) */
+	@PostMapping("/api/services/{id}/disconnect")
+	@ResponseStatus(HttpStatus.NO_CONTENT)
+	void disconnect(@PathVariable String id) {
+		registry.disconnect(id);
+	}
+
 	@GetMapping("/api/home")
 	Home home() {
 		return registry.current().map(s -> {
@@ -68,9 +92,11 @@ class ConnectRequestController {
 			HomeHealth health = registry.health(id)
 				.map(h -> new HomeHealth(h.cpu(), h.mem(), h.disk(), h.uptimeSec(), ServiceRegistry.kst(clock.instant())))
 				.orElse(null);
-			return new Home(new HomeService(s.id(), s.name(), s.host(), s.port(), s.connected(), catalog.latestCount(id)), health,
-					history.latest(s.id()).orElse(null));
-		}).orElse(new Home(null, null, null));
+			ServiceRegistry.Check check = registry.check(id);
+			Disconnect disconnect = new Disconnect(check.failures(), check.needsConfirm(), check.lastCheckedAt());
+			return new Home(new HomeService(s.id(), s.name(), s.host(), s.port(), s.connected(), catalog.latestCount(id), disconnect), health,
+					history.latest(s.id()).orElse(null), homeRun(history.state(s.id())));
+		}).orElse(new Home(null, null, null, null));
 	}
 
 }

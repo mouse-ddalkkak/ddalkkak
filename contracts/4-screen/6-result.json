@@ -3,7 +3,7 @@
   "source": "docs/openapi.yaml ④ 예시에서 뽑음 · 고칠 때는 openapi.yaml을 고치고 python scripts/screen_contracts.py",
   "calls": {
     "GET /api/runs/{id}": {
-      "summary": "6 결과 요약 (8·1 \"지난 결과\"도 같은 것)",
+      "summary": "6 결과 요약 (8 · 1 상단 검사 상태 칩(-214)에서 여는 것도 같은 것)",
       "owner": [
         "B2"
       ],
@@ -11,6 +11,7 @@
         "200": {
           "runId": "run_5",
           "service": "order-api",
+          "projectName": "order-api",
           "at": "2026-11-07T14:35:00+09:00",
           "durationMin": 23,
           "scenarioCount": 12,
@@ -18,12 +19,14 @@
           "status": "done",
           "codeSource": {
             "type": "github",
-            "commit": "a3f9c1"
+            "commit": "a3f9c1",
+            "ref": "https://github.com/owner/order-api",
+            "fileHash": null
           },
           "scores": {
-            "perf": 68,
-            "sec": 79,
-            "code": 92
+            "perf": 80,
+            "sec": 70,
+            "code": 90
           },
           "summary": {
             "perf": {
@@ -77,7 +80,8 @@
                 "recommended": "바인딩 파라미터(?)로 바꾸기",
                 "alternative": "JPA 메서드 쿼리로 바꾸기"
               },
-              "passCriteria": "ZAP SQL 인젝션 경고 0건"
+              "passCriteria": "ZAP SQL 인젝션 경고 0건",
+              "penalty": 30
             },
             {
               "id": "p1",
@@ -115,7 +119,8 @@
                 "recommended": "쿼리 수를 줄이고 커넥션 풀 크기 조정",
                 "alternative": null
               },
-              "passCriteria": "200명 p95 500ms 이내 · 오류율 1% 이하"
+              "passCriteria": "200명 p95 500ms 이내 · 오류율 1% 이하",
+              "penalty": 10
             },
             {
               "id": "p2",
@@ -158,7 +163,8 @@
                 "recommended": "필요한 데이터를 한 번에 묶어 조회",
                 "alternative": "자주 쓰는 결과는 캐시"
               },
-              "passCriteria": "p95 500ms 이내 · 오류율 1% 이하"
+              "passCriteria": "p95 500ms 이내 · 오류율 1% 이하",
+              "penalty": 10
             },
             {
               "id": "c1",
@@ -191,7 +197,8 @@
                 "recommended": "로그를 남기고 다시 던지기",
                 "alternative": "정말 무시할 예외면 이유를 주석으로"
               },
-              "passCriteria": "Semgrep 빈 catch 경고 0건"
+              "passCriteria": "Semgrep 빈 catch 경고 0건",
+              "penalty": 10
             }
           ],
           "passed": [
@@ -219,6 +226,25 @@
         }
       }
     },
+    "PATCH /api/runs/{id}": {
+      "summary": "8 · 6 프로젝트 이름 고치기",
+      "owner": [
+        "B2"
+      ],
+      "request": {
+        "projectName": "주문 서비스 v2"
+      },
+      "responses": {
+        "200": {
+          "runId": "run_5",
+          "projectName": "주문 서비스 v2"
+        },
+        "404": {
+          "code": "NOT_FOUND",
+          "message": "찾을 수 없어요"
+        }
+      }
+    },
     "POST /api/runs/{id}/report": {
       "summary": "6 \"다시 해석\" — 결과 원본을 다시 /ai/reports로",
       "owner": [
@@ -228,6 +254,7 @@
         "200": {
           "runId": "run_5",
           "service": "order-api",
+          "projectName": "order-api",
           "at": "2026-11-07T14:35:00+09:00",
           "durationMin": 23,
           "scenarioCount": 12,
@@ -235,12 +262,14 @@
           "status": "done",
           "codeSource": {
             "type": "github",
-            "commit": "a3f9c1"
+            "commit": "a3f9c1",
+            "ref": "https://github.com/owner/order-api",
+            "fileHash": null
           },
           "scores": {
-            "perf": 68,
-            "sec": 79,
-            "code": 92
+            "perf": 80,
+            "sec": 70,
+            "code": 90
           },
           "summary": {
             "perf": {
@@ -294,7 +323,8 @@
                 "recommended": "바인딩 파라미터(?)로 바꾸기",
                 "alternative": "JPA 메서드 쿼리로 바꾸기"
               },
-              "passCriteria": "ZAP SQL 인젝션 경고 0건"
+              "passCriteria": "ZAP SQL 인젝션 경고 0건",
+              "penalty": 30
             },
             {
               "id": "p1",
@@ -332,7 +362,8 @@
                 "recommended": "쿼리 수를 줄이고 커넥션 풀 크기 조정",
                 "alternative": null
               },
-              "passCriteria": "200명 p95 500ms 이내 · 오류율 1% 이하"
+              "passCriteria": "200명 p95 500ms 이내 · 오류율 1% 이하",
+              "penalty": 10
             },
             {
               "id": "p2",
@@ -375,7 +406,8 @@
                 "recommended": "필요한 데이터를 한 번에 묶어 조회",
                 "alternative": "자주 쓰는 결과는 캐시"
               },
-              "passCriteria": "p95 500ms 이내 · 오류율 1% 이하"
+              "passCriteria": "p95 500ms 이내 · 오류율 1% 이하",
+              "penalty": 10
             },
             {
               "id": "c1",
@@ -408,7 +440,8 @@
                 "recommended": "로그를 남기고 다시 던지기",
                 "alternative": "정말 무시할 예외면 이유를 주석으로"
               },
-              "passCriteria": "Semgrep 빈 catch 경고 0건"
+              "passCriteria": "Semgrep 빈 catch 경고 0건",
+              "penalty": 10
             }
           ],
           "passed": [
@@ -461,7 +494,7 @@
       },
       "responses": {
         "200": {
-          "text": "Spring Boot 3.2에서 아래 3개 문제를 고쳐 주세요.\n\n① [보안 · 위험] 검색어 하나로 모든 주문이 보여요 — GET /api/orders · OrderRepository.java:31 · 검색어 ' OR 1=1 -- 입력 시 전체 주문 뚫림 → 막힘\n② [코드 품질 · 주의] 결제 오류를 조용히 삼켜요 — PaymentService.java:113 · 빈 catch 블록 1곳 → 0곳\n③ [성능 · 주의] 주문 목록이 DB를 반복 호출해요 — GET /api/orders · OrderService.java:48 · 느린 요청 p95 · 50명 487ms → 500ms 이내\n\n고치는 순서: ① → ② → ③\n요구사항: 항목별 원인 확인 → 수정 → 회귀 테스트 · 서로 영향 주는 변경은 먼저 알려 주세요"
+          "text": "Spring Boot 3.2에서 아래 3개 문제를 고쳐 주세요.\n\n① [보안 · 위험] 검색어 하나로 모든 주문이 보여요 — GET /api/orders · OrderRepository.java:31 · 검색어 ' OR 1=1 -- 입력 시 전체 주문 뚫림 → 막힘\n② [코드 품질 · 주의] 결제 오류를 조용히 삼켜요 — PaymentService.java:113 · 빈 catch 블록 1곳 → 0곳\n③ [성능 · 주의] 주문 목록이 DB를 반복 호출해요 — GET /api/orders · OrderService.java:48 · 느린 요청 p95 · 50명 487ms → 500ms 이내 · 정황: 요청당 DB 쿼리 1,240회(N+1 의심)\n\n고치는 순서: ① → ② → ③\n요구사항: 항목별 원인 확인 → 수정 → 회귀 테스트 · 서로 영향 주는 변경은 먼저 알려 주세요"
         },
         "400": {
           "code": "NO_ITEMS",

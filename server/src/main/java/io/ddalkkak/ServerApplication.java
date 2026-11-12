@@ -9,8 +9,11 @@ import org.springframework.boot.SpringApplication;
 import org.springframework.boot.WebApplicationType;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.annotation.Bean;
+import org.springframework.scheduling.annotation.EnableScheduling;
 
 @SpringBootApplication
+// 30일 지난 로그인 설정 정리 (-230 TargetAuth.purge)
+@EnableScheduling
 public class ServerApplication {
 
 	public static void main(String[] args) {

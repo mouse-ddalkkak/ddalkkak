@@ -768,6 +768,139 @@
         }
       }
     },
+    "GET /api/runs/prepare/{id}/auth": {
+      "summary": "4 로그인 줄 — 로그인 구조 분석 · 지금 상태",
+      "owner": [
+        "B3"
+      ],
+      "responses": {
+        "200 none": {
+          "state": "none",
+          "analysis": {
+            "loginApi": "POST /api/auth/login",
+            "signupApi": "POST /api/auth/signup",
+            "fields": [
+              "email",
+              "password"
+            ],
+            "fieldsGuessed": false
+          },
+          "mode": null,
+          "hint": null,
+          "tokenAt": null,
+          "lastUsedAt": null
+        },
+        "200 ok": {
+          "state": "ok",
+          "analysis": {
+            "loginApi": "POST /api/auth/login",
+            "signupApi": "POST /api/auth/signup",
+            "fields": [
+              "email",
+              "password"
+            ],
+            "fieldsGuessed": false
+          },
+          "mode": "account",
+          "hint": "dd…7f2a",
+          "tokenAt": "body.token",
+          "lastUsedAt": "2026-11-12T14:20:00+09:00"
+        },
+        "200 expired": {
+          "state": "expired",
+          "analysis": {
+            "loginApi": "POST /api/auth/login",
+            "signupApi": "POST /api/auth/signup",
+            "fields": [
+              "email",
+              "password"
+            ],
+            "fieldsGuessed": false
+          },
+          "mode": "token",
+          "hint": "…a1b2",
+          "tokenAt": null,
+          "lastUsedAt": "2026-11-12T14:20:00+09:00"
+        },
+        "200 key_lost": {
+          "state": "key_lost",
+          "analysis": {
+            "loginApi": "POST /api/auth/login",
+            "signupApi": "POST /api/auth/signup",
+            "fields": [
+              "email",
+              "password"
+            ],
+            "fieldsGuessed": false
+          },
+          "mode": "cookie",
+          "hint": "SESSION=****",
+          "tokenAt": null,
+          "lastUsedAt": "2026-11-12T14:20:00+09:00"
+        },
+        "404": {
+          "code": "NOT_FOUND",
+          "message": "찾을 수 없어요"
+        }
+      }
+    },
+    "PUT /api/runs/prepare/{id}/auth": {
+      "summary": "4 로그인 확인 · 등록 — 계정 · 토큰 · 쿠키",
+      "owner": [
+        "B3"
+      ],
+      "request create": {
+        "mode": "account",
+        "create": true
+      },
+      "request account": {
+        "mode": "account",
+        "username": "me@shop.com",
+        "password": "********"
+      },
+      "request token": {
+        "mode": "token",
+        "token": "eyJhbGciOi…"
+      },
+      "request cookie": {
+        "mode": "cookie",
+        "cookie": "SESSION=3f9a…"
+      },
+      "responses": {
+        "200": {
+          "state": "ok",
+          "analysis": {
+            "loginApi": "POST /api/auth/login",
+            "signupApi": "POST /api/auth/signup",
+            "fields": [
+              "email",
+              "password"
+            ],
+            "fieldsGuessed": false
+          },
+          "mode": "account",
+          "hint": "me….com",
+          "tokenAt": "body.token",
+          "lastUsedAt": "2026-11-12T14:20:00+09:00"
+        },
+        "400 noLogin": {
+          "code": "NO_LOGIN_API",
+          "message": "가입 · 로그인 API를 찾지 못했어요 · 토큰이나 쿠키를 넣어 주세요"
+        },
+        "400 failed": {
+          "code": "TARGET_LOGIN_FAILED",
+          "message": "로그인하지 못했어요 · 아이디 · 비밀번호를 확인하거나 토큰 · 쿠키를 넣어 주세요"
+        },
+        "404": {
+          "code": "NOT_FOUND",
+          "message": "찾을 수 없어요"
+        },
+        "409": {
+          "code": "SERVICE_OFFLINE",
+          "message": "앱이 꺼져 있어요"
+        }
+      }
+    },
     "POST /api/runs": {
       "summary": "4 \"딸깍\" — 검사 시작",
       "owner": [

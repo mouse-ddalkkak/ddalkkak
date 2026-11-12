@@ -10,8 +10,8 @@ import {
   type Progress,
   type StopEvent,
 } from '../../api/runs'
+import { getHome } from '../../api/home'
 import { useApp } from '../../app/AppContext'
-import { useKeys } from '../../hooks/useKeys'
 import PageTitle from '../../components/PageTitle'
 import TitleFrame from '../../components/TitleFrame'
 import Gauge from '../../components/Gauge'
@@ -22,16 +22,22 @@ import BlinkCursor from '../../components/BlinkCursor'
 import { timeSec } from '../../utils/format'
 import { trapTab } from '../../utils/keys'
 import { watchRun } from './watchRun'
+import ServerStatus from '../home/ServerStatus'
+import ResumeDialog from '../../components/ResumeDialog'
 import s from './Run.module.css'
 
 const MAX_LOGS = 200 // F-RUN-10 최근 로그 200줄
 
 // 5 검사 진행 — SSE(progress · log · error · done)로 움직인다. 연결 규칙은 watchRun.ts (docs/web.md §3)
 export default function Run({ runId }: { runId: string }) {
-  const { showMessage } = useApp()
+  const { showMessage, home } = useApp()
   const [data, setData] = useState<Progress>()
   const [logs, setLogs] = useState<LogEvent[]>([])
   const [stopEvent, setStopEvent] = useState<StopEvent | null>(null)
+  // 딸깍 재시작으로 멈춘 회차면 멈춘 단계 이름(없으면 null) — 이어서 검사할지 묻는다 (-228). undefined면 묻지 않음
+  const [resume, setResume] = useState<string | null | undefined>(undefined)
+  // 이어서 · 여기까지를 고르면 같은 주소에서 스트림을 다시 붙인다
+  const [gen, setGen] = useState(0)
   const [open, setOpen] = useState<Record<string, boolean>>({})
   const [auto, setAuto] = useState(true)
   const [full, setFull] = useState<string[] | null>(null)
@@ -45,8 +51,15 @@ export default function Run({ runId }: { runId: string }) {
     if (left.current) return
     left.current = true
     if (status === 'stopped') {
-      location.hash = '#/'
-      showMessage('검사를 중단했어요')
+      // 딸깍 재시작으로 멈춘 회차(홈 run.state interrupted)면 홈으로 보내지 않고 이어서 검사할지 묻는다 (-228)
+      getHome()
+        .then((h) => (h.run?.state === 'interrupted' && h.run.runId === runId ? (h.run.interruptedAt?.name ?? null) : undefined))
+        .catch(() => undefined)
+        .then((at) => {
+          if (at !== undefined) return setResume(at)
+          location.hash = '#/'
+          showMessage('검사를 중단했어요')
+        })
     } else location.hash = `#/runs/${encodeURIComponent(runId)}`
   }
   const leaveRef = useRef(leave)
@@ -59,6 +72,7 @@ export default function Run({ runId }: { runId: string }) {
     setLogs([])
     setStopEvent(null)
     setFull(null)
+    setResume(undefined)
     return watchRun({
       open: () => openRunEvents(runId),
       getProgress: () => getProgress(runId),
@@ -73,7 +87,7 @@ export default function Run({ runId }: { runId: string }) {
         leave: (st) => leaveRef.current(st),
       },
     })
-  }, [runId])
+  }, [runId, gen])
 
   useEffect(() => {
     if (auto && logBox.current) logBox.current.scrollTop = logBox.current.scrollHeight
@@ -86,20 +100,22 @@ export default function Run({ runId }: { runId: string }) {
       // 래퍼가 문구를 띄웠다
     }
   }
-  // ESC 연타에도 POST /stop은 한 번. 실패하면 다시 누를 수 있게 푼다
+  // 연타에도 POST /stop은 한 번. 실패하면 다시 누를 수 있게 푼다
   const stop = async () => {
     if (stopping.current) return
     stopping.current = true
     try {
       const { status } = await stopRun(runId)
-      // running이면 서버가 결과 정리 중 — 끝나면 SSE done(stopped)이 와서 그때 떠난다 (openapi stopRun)
+      // running이면 서버가 결과 정리 중 — 끝나면 SSE done(stopped)이 와서 그때 떠난다 (openapi stopRun).
+      // 그동안 오류 팝업을 닫는다 — 열려 있으면 "다시 시도"가 정리 중인 회차에 NOT_FOUND (!113 리뷰, partial과 같게)
       if (status !== 'running') leave(status)
+      else setStopEvent(null)
     } catch {
       stopping.current = false // 래퍼가 문구를 띄웠다
     }
   }
   // 다시 시도 뒤에는 서버가 같은 스트림으로 이어 보내 다시 열지 않는다. 또 멈추면 error가 다시 와 팝업이 뜬다 (docs/web.md §3, -156)
-  const retrying = useRef(false) // ENTER 연타에도 POST /retry는 한 번
+  const retrying = useRef(false) // 연타에도 POST /retry는 한 번
   const retry = async () => {
     if (retrying.current) return
     retrying.current = true
@@ -107,22 +123,20 @@ export default function Run({ runId }: { runId: string }) {
     retrying.current = false
   }
   // running이면 서버가 여기까지 결과를 정리 중 — 끝나면 SSE done(partial)이 와서 그때 6으로 간다 (openapi finishRunPartial, -143).
-  // 그동안 팝업을 닫고 화면 키를 쉰다: 멈춘 회차가 아니라 ENTER의 /retry는 404, ESC의 /stop은 서버가 무시한다 (openapi stopRun)
-  const [finishing, setFinishing] = useState(false)
+  // 그동안 팝업을 닫는다
   const partialSent = useRef(false) // 연타에도 POST /finish-partial은 한 번
   const partial = async () => {
     if (partialSent.current) return
     partialSent.current = true
     await act(finishPartial, (status: string) => {
       if (status !== 'running') return leave(status)
-      setFinishing(true)
       setStopEvent(null)
     })()
     if (!left.current) partialSent.current = false
   }
 
-  // 오류 팝업은 <dialog>가 아니라 Tab을 직접 가둔다: 끝 버튼에서 반대쪽 끝으로. 열릴 때는 다시 시도에 포커스(autoFocus) —
-  // 그 전에 중단 등에 포커스가 있었으면 ENTER가 그 버튼을 눌렀다. 팝업 빈 곳을 눌러 포커스가 body로 가도 잡도록 document에 건다 (-194)
+  // 오류 팝업은 <dialog>가 아니라 Tab을 직접 가둔다: 끝 버튼에서 반대쪽 끝으로. 열릴 때는 다시 시도에 포커스(autoFocus).
+  // 팝업 빈 곳을 눌러 포커스가 body로 가도 잡도록 document에 건다 (-194)
   const popup = useRef<HTMLDivElement>(null)
   useEffect(() => {
     if (!stopEvent) return
@@ -137,9 +151,6 @@ export default function Run({ runId }: { runId: string }) {
     return () => document.removeEventListener('keydown', onKey)
   }, [stopEvent])
 
-  // 오류 팝업이 떠 있으면 ENTER 다시 시도 · ESC 중단 (F-HOME-05 표 5)
-  useKeys(finishing ? {} : stopEvent ? { Escape: stop, Enter: retry } : { Escape: stop })
-
   const toggleFull = async () => {
     if (full) return setFull(null)
     try {
@@ -150,6 +161,18 @@ export default function Run({ runId }: { runId: string }) {
   }
   const fullLabel = full ? '로그 접기' : '전체 로그'
 
+  // 재시작으로 멈춘 회차는 SSE가 done 하나만 보내 단계 트리(data)가 없다 — 그 전에 묻는다
+  if (resume !== undefined)
+    return (
+      <ResumeDialog
+        runId={runId}
+        at={resume}
+        onClose={() => {
+          location.hash = '#/'
+        }}
+        onPicked={() => setGen((n) => n + 1)}
+      />
+    )
   if (!data) return null
   const isOpen = (step: string, state: string) => open[step] ?? state === 'running'
   const stepName = (step: string) => data.steps.find((st) => st.step === step)?.name ?? step
@@ -206,6 +229,8 @@ export default function Run({ runId }: { runId: string }) {
             </div>
           ))}
         </section>
+        {/* 검사 중에도 홈과 같은 서버 상태 (-214) */}
+        {home && <ServerStatus home={home} className={s.server} />}
       </div>
       <section className={s.logPanel}>
         <div className={s.logHead}>
@@ -258,6 +283,9 @@ export default function Run({ runId }: { runId: string }) {
               </Button>
               <Button variant="outline" size="sm" onClick={partial}>
                 여기까지 결과 보기
+              </Button>
+              <Button variant="outline" size="sm" onClick={stop}>
+                중단
               </Button>
               <span className={s.grow} />
               <button type="button" className={s.link} onClick={toggleFull}>

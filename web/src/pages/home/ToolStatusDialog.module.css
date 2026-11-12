@@ -1,0 +1,13 @@
+.list{display:flex;flex-direction:column;gap:14px}
+.row{display:flex;flex-direction:column;gap:8px;padding:14px 16px;border:4px solid var(--ink-700)}
+.head{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.name{font:var(--type-label);letter-spacing:2px;color:var(--white)}
+.grow{flex:1}
+.muted{margin:0;font:var(--type-caption);color:var(--ink-400);overflow-wrap:anywhere}
+.badge{padding:4px 8px;background:var(--status-warning);color:var(--ink-900);font:var(--type-small);letter-spacing:2px;white-space:nowrap}
+.badge[data-ok]{background:var(--status-success)}
+.error{display:flex;flex-direction:column;gap:6px;font:var(--type-small);letter-spacing:1px;color:var(--status-danger);overflow-wrap:anywhere}
+.cause{margin:0;padding:8px 10px;background:var(--ink-800);color:var(--ink-300);font:var(--type-small);white-space:pre-wrap;overflow-wrap:anywhere}
+.link{color:var(--cyan-300)}
+.fix{font:var(--type-small);letter-spacing:1px;color:var(--ink-100);overflow-wrap:anywhere}
+.bad{margin:0;font:var(--type-small);color:var(--status-danger)}

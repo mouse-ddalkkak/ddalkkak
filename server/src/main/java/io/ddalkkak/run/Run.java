@@ -38,6 +38,21 @@ class Run {
 
 	LocalDateTime finishedAt;
 
+	/** 끝난 회차의 결과를 처음 연 시각. 비어 있으면 홈 검사 상태가 '검사 완료' (-214) */
+	LocalDateTime resultSeenAt;
+
+	/** 딸깍이 다시 켜져 멈춘 시각(stopLeftover). 차 있으면 홈 '이어서 검사할까요?' — 이어서 · 여기까지를 고르면 비운다 (-228) */
+	LocalDateTime interruptedAt;
+
+	/**
+	 * 사용자가 중단 · 여기까지를 고른 시각(B3 → {@link RunLifecycle#stopChosen}). 차 있으면 결과 정리 중에 다시 켜져도 interruptedAt 을
+	 * 찍지 않는다 — 일부러 멈춘 회차를 이어서 할지 묻지 않게 (!143 리뷰 3-3). 이어서 검사를 시작하면 비운다
+	 */
+	LocalDateTime stopChosenAt;
+
+	/** 이어서 검사를 시작한 시각 (-228, !143 셀프 리뷰 3차 3). 소요 시간 · 팀 서버 배포 대기는 이 값이 있으면 이것부터 센다 */
+	LocalDateTime resumedAt;
+
 	@Column(nullable = false)
 	int scenarioCount;
 
@@ -48,9 +63,21 @@ class Run {
 	@Column(length = 100)
 	String skipReason;
 
+	/**
+	 * 8 · 6 프로젝트 이름 (F-HIST-05). 만들 때 연결된 서비스 이름을 넣고, 고치기는 {@link RunRepository#rename} 만 한다 — 회차를 읽고 한참 뒤
+	 * 다시 저장하는 곳(결과 저장 · 상태 전이)이 옛 이름으로 덮지 않게 UPDATE 에서 뺀다
+	 */
+	@Column(nullable = false, length = 100, updatable = false)
+	String projectName;
+
 	/** API 의 runId ("run_5") */
 	String key() {
 		return "run_" + id;
+	}
+
+	/** 이 회차 서비스의 "svc_1" (ServiceRegistry.byId) */
+	String serviceKey() {
+		return "svc_" + serviceId;
 	}
 
 	/** "run_5" → 5. 모양이 다르면 null */

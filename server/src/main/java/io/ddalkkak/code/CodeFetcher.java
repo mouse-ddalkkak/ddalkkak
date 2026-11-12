@@ -65,8 +65,8 @@ class CodeFetcher {
 
 	}
 
-	/** 가져온 결과. commit · commitAt 은 모르면 null, branch 는 github 만 */
-	record Fetched(String commit, LocalDateTime commitAt, String branch, boolean decompiled) {
+	/** 가져온 결과. commit · commitAt 은 모르면 null, branch 는 github 만, fileHash 는 jar · war · zip 파일 sha256 앞 12자(소스 식별자, -224) */
+	record Fetched(String commit, LocalDateTime commitAt, String branch, boolean decompiled, String fileHash) {
 	}
 
 	private record Result(int exit, String out, String err) {
@@ -173,18 +173,22 @@ class CodeFetcher {
 			throw new Failure(ErrorCode.CODE_FETCH_FAILED);
 		}
 		String actual = branch != null ? branch : git(dir, "rev-parse", "--abbrev-ref", "HEAD");
-		return new Fetched(commitOf(dir), commitAtOf(dir), actual, false);
+		return new Fetched(commitOf(dir), commitAtOf(dir), actual, false, null);
 	}
 
-	/** jar 에서 BOOT-INF/classes(일반 jar 면 전체)만 꺼내 Vineflower 로 복원한다. 라이브러리는 복원하지 않는다 */
+	/**
+	 * jar 에서 BOOT-INF/classes(일반 jar 면 전체)만, war 면 WEB-INF/classes 만 꺼내 Vineflower 로 복원한다. 라이브러리(BOOT-INF/lib ·
+	 * WEB-INF/lib)는 복원하지 않는다. 커밋은 그 classes 안 git.properties (-224 · -244)
+	 */
 	Fetched jar(String ref, Path dir, Consumer<String> step) throws IOException {
 		Path jar = underHome(ref);
 		step.accept("extracting");
 		Path scratch = Files.createTempDirectory("ddalkkak-jar");
 		try (ZipFile zip = open(jar)) {
 			Path classes = Files.createDirectories(scratch.resolve("classes"));
-			boolean boot = zip.stream().anyMatch(e -> e.getName().startsWith("BOOT-INF/classes/"));
-			extract(zip, classes, boot ? "BOOT-INF/classes/" : "");
+			boolean war = jar.getFileName().toString().toLowerCase(Locale.ROOT).endsWith(".war");
+			boolean boot = !war && zip.stream().anyMatch(e -> e.getName().startsWith("BOOT-INF/classes/"));
+			extract(zip, classes, war ? "WEB-INF/classes/" : boot ? "BOOT-INF/classes/" : "");
 			String commit = abbrevOf(classes.resolve("git.properties"));
 
 			step.accept("decompiling");
@@ -195,10 +199,25 @@ class CodeFetcher {
 				log.warn("Vineflower 실패 {}: {}", jar, tail(result.out() + result.err()));
 				throw new Failure(ErrorCode.SERVER_ERROR);
 			}
-			return new Fetched(commit, null, null, true);
+			return new Fetched(commit, null, null, true, hash(jar));
 		}
 		finally {
 			deleteTree(scratch);
+		}
+	}
+
+	/** 파일 sha256 앞 12자 — 같은 jar · war · ZIP 인지 결과에서 알아보게 (code_source.file_hash) */
+	static String hash(Path file) throws IOException {
+		try (InputStream in = Files.newInputStream(file)) {
+			java.security.MessageDigest digest = java.security.MessageDigest.getInstance("SHA-256");
+			byte[] buffer = new byte[64 * 1024];
+			for (int n; (n = in.read(buffer)) > 0;) {
+				digest.update(buffer, 0, n);
+			}
+			return java.util.HexFormat.of().formatHex(digest.digest()).substring(0, 12);
+		}
+		catch (java.security.NoSuchAlgorithmException e) {
+			throw new IllegalStateException(e);
 		}
 	}
 
@@ -208,7 +227,8 @@ class CodeFetcher {
 		try (ZipFile zip = open(file)) {
 			extract(zip, Files.createDirectories(dir), "");
 		}
-		return gitFetched(dir);
+		Fetched git = gitFetched(dir);
+		return new Fetched(git.commit(), git.commitAt(), null, false, hash(file));
 	}
 
 	/** 설치 서버의 폴더를 작업 폴더로 복사한다. .git 은 두고 build · target · node_modules · .gradle 은 뺀다 */
@@ -366,6 +386,22 @@ class CodeFetcher {
 	// ───────── git · 프로세스 ─────────
 
 	/** 서버 안에서 본 호스트 홈 */
+	/** 호스트 경로 → 서버가 읽는 경로(HOME_MOUNT 가 있으면 /host-home 아래). 홈 밖이거나 모양이 틀리면 null. 있는지는 보지 않는다 */
+	Path inServer(String hostPath) {
+		try {
+			Path path = homeMount.isEmpty() ? Path.of(hostPath.trim()) : inMount(hostHome, Path.of(homeMount), hostPath);
+			return path != null && path.isAbsolute() ? path : null;
+		}
+		catch (InvalidPathException e) {
+			return null;
+		}
+	}
+
+	/** 서버가 읽는 홈 폴더 (실제 경로) */
+	Path homeDir() throws IOException {
+		return home();
+	}
+
 	private Path home() throws IOException {
 		return Path.of(homeMount.isEmpty() ? hostHome : homeMount).toRealPath();
 	}
@@ -379,18 +415,18 @@ class CodeFetcher {
 		for (Path d = source; d != null && d.startsWith(home) && !d.equals(home); d = d.getParent()) {
 			if (Files.exists(d.resolve(".git"), LinkOption.NOFOLLOW_LINKS)) {
 				String branch = git(d, "rev-parse", "--abbrev-ref", "HEAD");
-				return new Fetched(commitOf(d), commitAtOf(d), branch == null || branch.isBlank() || "HEAD".equals(branch) ? null : branch, false);
+				return new Fetched(commitOf(d), commitAtOf(d), branch == null || branch.isBlank() || "HEAD".equals(branch) ? null : branch, false, null);
 			}
 		}
-		return new Fetched(null, null, null, false);
+		return new Fetched(null, null, null, false, null);
 	}
 
 	/** 폴더에 .git 이 있으면 github 와 같게 커밋을 읽고, 없으면 모른다 */
 	private Fetched gitFetched(Path dir) {
 		if (!Files.isDirectory(dir.resolve(".git"), LinkOption.NOFOLLOW_LINKS)) {
-			return new Fetched(null, null, null, false);
+			return new Fetched(null, null, null, false, null);
 		}
-		return new Fetched(commitOf(dir), commitAtOf(dir), null, false);
+		return new Fetched(commitOf(dir), commitAtOf(dir), null, false, null);
 	}
 
 	private String commitOf(Path dir) {

@@ -6,7 +6,12 @@ import org.springframework.data.jpa.repository.JpaRepository;
 
 interface ServiceRowRepository extends JpaRepository<ServiceRow, Long> {
 
-	Optional<ServiceRow> findFirstByOrderById();
+	/** 해제하지 않은 줄. 연결은 동시에 1개라 많아야 하나 (-223) */
+	Optional<ServiceRow> findFirstByDisconnectedAtIsNullOrderById();
+
+	boolean existsByDisconnectedAtIsNullAndIdNot(Long id);
+
+	boolean existsByDisconnectedAtIsNull();
 
 	Optional<ServiceRow> findFirstByNameAndHostAndPort(String name, String host, int port);
 

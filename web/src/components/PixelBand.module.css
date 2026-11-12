@@ -3,7 +3,7 @@
 .bottom{z-index:2}
 .ground,.sky{position:absolute;inset:0}
 .ground{background:var(--ink-700)}
-.sky{background-color:var(--band-500);background-image:var(--bg-band-dots);background-size:var(--bg-band-dots-size);background-position:var(--bg-band-dots-pos)}
+.sky{background-color:var(--band-700);background-image:var(--bg-band-dots);background-size:var(--bg-band-dots-size);background-position:var(--bg-band-dots-pos)}
 .top .ground{clip-path:var(--clip-band-top-ground-fine)}
 .top .sky{clip-path:var(--clip-band-top-sky-fine)}
 .bottom .ground{clip-path:var(--clip-band-bottom-ground-fine)}

@@ -80,7 +80,7 @@ class RunPrompts {
 		List<Report.Issue> issues = picked.stream().map(RunResults.Picked::issue).toList();
 		// 코드는 한 건일 때만 (묶음이면 문제마다 달라 AI 서버가 쓰지 않는다 — ai-server.md §3-7)
 		RunResults.CodeSnippet code = picked.size() == 1 ? picked.getFirst().code() : null;
-		return new Text(ask(new Request(framework(), issues, code, includeLogs ? logs(run, issues) : List.of())));
+		return new Text(ask(new Request(framework(run), issues, code, includeLogs ? logs(run, issues) : List.of())));
 	}
 
 	/** 문제마다 B3 가 아는 관측 근거 로그를 고른 순서로 이어 붙인다. 같은 시나리오(itemKey)는 한 번만 */
@@ -125,9 +125,12 @@ class RunPrompts {
 		return List.copyOf(keys);
 	}
 
-	/** 연결된 서비스의 "Spring Boot 3.2". 서비스가 없으면(지운 뒤 지난 결과를 볼 때) "Spring Boot" */
-	private String framework() {
-		return services.current().map(ServiceRegistry.ConnectedService::framework).orElse("Spring Boot");
+	/**
+	 * 그 회차 서비스(run.service_id)의 "Spring Boot 3.2" — 해제했거나 다른 서비스가 연결돼 있어도 (db.md §4, -223 · -237). 서비스 줄이 없으면
+	 * "Spring Boot"
+	 */
+	private String framework(Run run) {
+		return services.byId(run.serviceKey()).map(ServiceRegistry.ConnectedService::framework).orElse("Spring Boot");
 	}
 
 }

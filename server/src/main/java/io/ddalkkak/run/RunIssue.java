@@ -66,6 +66,12 @@ class RunIssue {
 
 	String passCriteria;
 
+	/** ③ Issue.penalty — 영역 점수에서 뺀 점수 (-247) */
+	Integer penalty;
+
+	/** ③ Issue.ruleId — 내부용, 코드 위치 예비 경로가 그 규칙의 발견만 고른다 (-247). 이전 회차 · 성능은 null */
+	String ruleId;
+
 	/** 작업 폴더 기준 상대 경로. 코드가 없거나 못 찾으면 null */
 	@Column(length = 512)
 	String locationFile;

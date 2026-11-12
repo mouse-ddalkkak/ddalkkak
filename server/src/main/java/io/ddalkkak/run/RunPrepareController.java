@@ -3,7 +3,6 @@ package io.ddalkkak.run;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -11,10 +10,6 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/api/runs/prepare")
 class RunPrepareController {
-
-	/** @param codeJobId POST /api/code-source 가 준 jobId. 코드 없이면 null */
-	record Start(String codeJobId) {
-	}
 
 	record Started(String runId) {
 	}
@@ -25,9 +20,10 @@ class RunPrepareController {
 		this.prepare = prepare;
 	}
 
+	/** 본문은 없다 — 코드는 저장한 방식으로 준비가 다시 가져온다(-224 · -242). 옛 화면이 보내는 {codeJobId} 는 읽지 않는다 */
 	@PostMapping
-	Started start(@RequestBody Start body) {
-		return new Started(prepare.start(body.codeJobId()));
+	Started start() {
+		return new Started(prepare.start());
 	}
 
 	@GetMapping("/{id}")

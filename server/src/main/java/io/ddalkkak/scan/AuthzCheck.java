@@ -38,6 +38,12 @@ class AuthzCheck {
 
 	static final String NO_TARGET = "대상 없음";
 
+	/** 계정은 있는데 목록 경로를 알 수 없거나 id 를 못 모아 남의 데이터 보기를 비교하지 못함 (-235 · -239). 통과로 세지 않는다 */
+	static final String AUTHZ_UNCHECKED = "권한 점검 못 함";
+
+	/** 목록 항목의 소유자 필드 (scan.md §6, -239). 앞에서부터 처음 있는 스칼라 값을 쓴다. user.id 는 user 객체 아래 id */
+	static final List<String> OWNER_FIELDS = List.of("userId", "ownerId", "memberId", "accountId", "createdBy", "user.id");
+
 	private final ServiceRegistry services;
 
 	private final ApiCatalog catalog;
@@ -61,9 +67,16 @@ class AuthzCheck {
 		this.json = json;
 	}
 
-	/** 남의 데이터 보기 판정. checked 가 0 이면 하나도 비교하지 못한 것(미검사). passed 는 차단 · 공개 데이터일 때만 (-200) */
-	private record Verdict(int checked, int leaked, RawReport.Passed passed) {
+	/**
+	 * 남의 데이터 보기 판정. checked 가 0 이면 하나도 비교하지 못한 것(미검사). passed 는 차단 · 공개 데이터일 때만 (-200).
+	 * singleLeaked 는 단건으로 샌 id 수(→ ddalkkak-idor), listApi 는 목록으로 샌 것이 있으면 그 목록 API(→ ddalkkak-list-exposure 의 위치).
+	 * 목록 노출은 고치는 곳이 목록 쿼리라 단건과 따로 낸다 (!126 리뷰 1-1 · 3-1)
+	 */
+	private record Verdict(int checked, int leaked, RawReport.Passed passed, int singleLeaked, String listApi) {
 	}
+
+	/** 목록 API 가 남의 데이터를 내보냄 — 고치는 곳은 목록 쿼리(로그인한 사용자로 거르기) (!126 리뷰 3-1) */
+	static final String LIST_EXPOSURE = "ddalkkak-list-exposure";
 
 	/**
 	 * 관리자 API 비로그인 점검 결과. apis 가 0 이면 볼 관리자 API 가 없음, reached 가 0 이면 하나도 응답하지 않음(앱에 닿지 못함 — 점검을 한
@@ -146,7 +159,7 @@ class AuthzCheck {
 					: json.readValue(row.evidence, new tools.jackson.core.type.TypeReference<List<String>>() {
 					});
 			if ("skipped".equals(row.status)) {
-				evidence.add("[zap] " + item.key() + " → 건너뜀(" + row.skipReason + ")");
+				evidence.add(skippedLine(item.key(), row.skipReason));
 				row.status = "partial";
 				row.skipReason = null;
 			}
@@ -204,26 +217,32 @@ class AuthzCheck {
 				String api = item.api().strip();
 				String path = api.substring(api.indexOf(' ') + 1);
 				int last = path.lastIndexOf("/{");
-				if (last < 0 || path.substring(0, last).contains("{")) {
-					// 경로 변수가 둘 이상이거나 /{ 로 끝나지 않음 — 목록 경로를 만들 수 없다 (!69 리뷰 1-5 · 3-4)
-					evidence.add("[auth] 남의 데이터 보기 " + api + " · 목록 경로를 알 수 없음 → 미검사");
-					idorMissing = NO_TARGET;
-				}
-				else if (accounts.size() < 2) {
+				// 계정 수를 먼저 본다 — 목록 경로를 몰라도 "계정을 2개 만들면 된다"는 단서가 남게 (!126 리뷰 1-2, F-RUN-06 예외)
+				if (accounts.size() < 2) {
 					evidence.add("[auth] 남의 데이터 보기 " + api + " · 계정 없음 → 미검사");
 					idorMissing = K6Runner.NO_ACCOUNT;
+				}
+				else if (last < 0 || path.substring(0, last).contains("{")) {
+					// 경로 변수가 둘 이상이거나 /{ 로 끝나지 않음 — 목록 경로를 만들 수 없다 (!69 리뷰 1-5 · 3-4)
+					evidence.add("[auth] 남의 데이터 보기 " + api + " · 목록 경로를 알 수 없음 → 미검사");
+					idorMissing = AUTHZ_UNCHECKED;
 				}
 				else {
 					int idCount = Math.max(1, item.params() == null ? 1 : item.params().path("idCount").asInt(1));
 					try {
-						Verdict v = idor(port, api, idCount, accounts.get(0).token(), accounts.get(1).token(), evidence);
+						Verdict v = idor(port, api, idCount, accounts.get(0).credential(), accounts.get(1).credential(), evidence);
 						checked += v.checked();
 						leaked += v.leaked();
 						if (v.checked() == 0) {
-							idorMissing = NO_TARGET;
+							idorMissing = AUTHZ_UNCHECKED;
 						}
-						if (v.leaked() > 0) {
+						if (v.singleLeaked() > 0) {
 							findings.add(finding("ddalkkak-idor", "남의 데이터 보기"));
+						}
+						if (v.listApi() != null) {
+							Map<String, Object> f = finding(LIST_EXPOSURE, "목록으로 남의 데이터 보기");
+							f.put("location", Map.of("api", v.listApi()));
+							findings.add(f);
 						}
 						if (v.passed() != null) {
 							passed.add(v.passed());
@@ -269,23 +288,48 @@ class AuthzCheck {
 		}
 	}
 
-	private Verdict idor(int port, String api, int idCount, String a, String b, List<String> evidence)
+	private Verdict idor(int port, String api, int idCount, ScanLogin.Credential a, ScanLogin.Credential b, List<String> evidence)
 			throws IOException, InterruptedException {
 		String path = api.substring(api.indexOf(' ') + 1);
 		String list = path.substring(0, path.lastIndexOf("/{"));
-		List<String> ids = ids(get(port, list, a), idCount);
+		List<JsonNode> mineList = items(get(port, list, a));
+		List<String> ids = ids(mineList, idCount);
 		if (ids.isEmpty()) {
 			evidence.add("[auth] 남의 데이터 보기 " + api + " · 계정 A 의 목록(GET " + list + ")에서 id 를 못 찾음 → 미검사");
-			return new Verdict(0, 0, null);
+			return new Verdict(0, 0, null, 0, null);
 		}
+		List<JsonNode> theirList = items(get(port, list, b));
 		// 공개 자원은 목록으로 본다 — 토큰 없이 목록에도 그 id 가 있어야 공개. 단건만 누구나 보는 앱(영수증 · 주문 단건)은 뚫림 (!69 리뷰 3-1).
-		// B 의 목록에도 있으면 로그인한 누구나 보는 공유 자원(사내 도구 · 로그인 뒤 카탈로그)이라 남의 데이터가 아니다 (4-4)
-		java.util.Set<String> anyone = new java.util.HashSet<>(ids(get(port, list, null), Integer.MAX_VALUE));
-		anyone.addAll(ids(get(port, list, b), Integer.MAX_VALUE));
+		java.util.Set<String> anyone = new java.util.HashSet<>(ids(items(get(port, list, null)), Integer.MAX_VALUE));
+		java.util.Set<String> theirIds = new java.util.HashSet<>(ids(theirList, Integer.MAX_VALUE));
+		// 목록 항목에 소유자 필드가 있으면 B 의 목록에 보이는 A 소유 항목은 공유 자원이 아니라 목록으로 새는 남의 데이터다 (-239).
+		// 소유자를 알 수 없으면(필드 없음 · 값이 섞임) B 의 목록에도 있고 B 도 단건을 읽는 것은 로그인한 누구나 보는 공유 자원으로 본다 (!69 리뷰 4-4)
+		String owner = owner(mineList);
+		// B 의 목록도 모두 같은 소유 값이면 그 값은 A 만의 것이 아니다 — 시드 계정 · 관리자가 만든 공용 목록(createdBy: admin 등) (!126 리뷰 3-2)
+		boolean sameOwner = owner != null && owner.equals(owner(theirList));
+		if (sameOwner) {
+			owner = null;
+		}
+		java.util.Set<String> listLeaked = new java.util.HashSet<>();
+		if (owner != null) {
+			java.util.Set<String> mineIds = new java.util.HashSet<>(ids(mineList, Integer.MAX_VALUE));
+			for (JsonNode e : theirList) {
+				String id = ids(List.of(e), 1).stream().findFirst().orElse("");
+				// A 의 목록에도 있는 항목만 A 데이터다 — B 자기 항목의 소유 값이 우연히 같은 것(알림의 createdBy: system 등)은 아니다 (!126 리뷰 2-1).
+				// 토큰 없이도 보이는 항목은 공개 자원이라 새는 것이 아니다
+				if (mineIds.contains(id) && owner.equals(ownerOf(e)) && !anyone.contains(id)) {
+					listLeaked.add(id);
+				}
+			}
+		}
 		int compared = 0;
 		int leaked = 0;
 		int blocked = 0;
 		int open = 0;
+		int shared = 0;
+		// metrics 는 id 수 — 단건 · 목록에서 같은 id 는 한 번만 센다 (!126 리뷰 1-1 · 2-4)
+		java.util.Set<String> checkedIds = new java.util.HashSet<>();
+		java.util.Set<String> leakedIds = new java.util.HashSet<>();
 		for (String id : ids) {
 			String one = path.replaceAll("\\{[^}/]*}", URLEncoder.encode(id, StandardCharsets.UTF_8));
 			HttpResponse<String> mine = get(port, one, a);
@@ -293,37 +337,72 @@ class AuthzCheck {
 				continue; // A 도 못 읽으면 비교한 것이 아니다 (!69 리뷰 3-2)
 			}
 			compared++;
+			checkedIds.add(id);
 			HttpResponse<String> theirs = get(port, one, b);
 			if (theirs.statusCode() == 200 && theirs.body().equals(mine.body())) {
 				if (anyone.contains(id)) {
 					open++;
 				}
+				else if (owner == null && theirIds.contains(id)) {
+					open++;
+					shared++;
+				}
 				else {
 					leaked++;
+					leakedIds.add(id);
 				}
 			}
-			else if (theirs.statusCode() == 401 || theirs.statusCode() == 403) {
-				blocked++;
+			else if (theirs.statusCode() == 401 || theirs.statusCode() == 403 || theirs.statusCode() == 404) {
+				// 404 는 막힌 것인지 없는 것인지 알 수 없어 차단으로 세지 않는다(판단 보류, -200)
+				if (theirs.statusCode() != 404) {
+					blocked++;
+				}
+				// 단건은 B 에게 막았거나(401 · 403) 없는 척하는데(404) B 의 목록이 보여 준다 — 주인을 거르지 않는 목록. 소유자를 몰라도 새는 것이다.
+				// 주인을 안 거르는 목록은 B 계정에 데이터가 없으면 A · B 가 같은 목록을 받아 소유자 분기(sameOwner)로는 못 잡는다 (!126 리뷰 3 · 8f7733c 리뷰 1)
+				if (theirIds.contains(id) && !anyone.contains(id)) {
+					listLeaked.add(id);
+				}
 			}
 		}
+		// A 도 단건을 하나도 못 읽으면 그 목록이 A 의 데이터라고 확인한 것이 아니다 — 목록 노출도 세지 않고 미검사로 (!126 리뷰 4-1 · 5-1).
+		// A 가 하나라도 읽었으면 소유자 분기는 B 목록의 A 소유 항목을 idCount 를 넘어 다 센다 (!126 리뷰 6-1, 사용자 결정)
 		if (compared == 0) {
-			evidence.add("[auth] 남의 데이터 보기 " + api + " · 계정 A 도 단건(" + ids.size() + "개)을 못 읽음 → 미검사");
-			return new Verdict(0, 0, null);
+			listLeaked.clear();
 		}
-		String verdict = leaked > 0 ? "뚫림" : open == compared ? "공개 데이터" : blocked + open == compared ? "차단" : "판단 보류";
-		evidence.add("[auth] 남의 데이터 보기 " + api + " · " + compared + "개 중 " + leaked + "개" + (open > 0 ? " · 공개 " + open + "개" : "")
-				+ " → " + verdict);
-		// 막혔거나 누구나 보는 자원이면 통과. 판단 보류(404 · 다른 본문이 섞임)는 막힌 것인지 알 수 없어 싣지 않는다 (-200 사용자 결정)
-		RawReport.Passed passed = "차단".equals(verdict) || "공개 데이터".equals(verdict)
-				? new RawReport.Passed("ddalkkak-idor", "남의 데이터 보기 " + api, compared + "개 중 0개") : null;
-		return new Verdict(compared, leaked, passed);
+		if (shared > 0) {
+			String why = sameOwner ? "소유 값이 A · B 같음"
+					: mineList.stream().anyMatch(e -> ownerOf(e) == null) ? "소유 필드 없음" : "소유 값이 섞임";
+			evidence.add("[auth] 남의 데이터 보기 GET " + list + "(목록) · " + why + " → B 목록은 공유로 봄");
+		}
+		if (!listLeaked.isEmpty()) {
+			evidence.add("[auth] 남의 데이터 보기 GET " + list + "(목록) · B 목록에 A 데이터 " + listLeaked.size() + "개 → 뚫림");
+		}
+		checkedIds.addAll(listLeaked);
+		leakedIds.addAll(listLeaked);
+		if (compared == 0 && listLeaked.isEmpty()) {
+			evidence.add("[auth] 남의 데이터 보기 " + api + " · 계정 A 도 단건(" + ids.size() + "개)을 못 읽음 → 미검사");
+			return new Verdict(0, 0, null, 0, null);
+		}
+		if (compared > 0) {
+			String verdict = leaked > 0 ? "뚫림" : open == compared ? "공개 데이터" : blocked + open == compared ? "차단" : "판단 보류";
+			evidence.add("[auth] 남의 데이터 보기 " + api + " · " + compared + "개 중 " + leaked + "개" + (open > 0 ? " · 공개 " + open + "개" : "")
+					+ " → " + verdict);
+			// 막혔거나 누구나 보는 자원이면 통과. 판단 보류(404 · 다른 본문이 섞임)는 막힌 것인지 알 수 없어 싣지 않는다 (-200 사용자 결정).
+			// 단건이 막혀도 목록으로 새면 통과가 아니다 (-239)
+			if (listLeaked.isEmpty() && ("차단".equals(verdict) || "공개 데이터".equals(verdict))) {
+				return new Verdict(compared, leaked,
+						new RawReport.Passed("ddalkkak-idor", "남의 데이터 보기 " + api, compared + "개 중 0개"), leaked, null);
+			}
+		}
+		// 목록으로 샌 것은 목록 API 가 위치인 따로의 발견(ddalkkak-list-exposure), 단건으로 샌 것은 시나리오의 단건 API (!126 리뷰 1-1 · 3-1)
+		return new Verdict(checkedIds.size(), leakedIds.size(), null, leaked, listLeaked.isEmpty() ? null : "GET " + list);
 	}
 
-	/** 목록 응답에서 id 를 앞에서부터 n 개: 배열, 또는 content · items · data · results 아래 배열의 "id" */
-	private List<String> ids(HttpResponse<String> response, int n) {
-		List<String> ids = new ArrayList<>();
+	/** 목록 응답의 항목들: 배열, 또는 content · items · data · results 아래 배열. 200 이 아니거나 JSON 이 아니면 빈 목록 */
+	private List<JsonNode> items(HttpResponse<String> response) {
+		List<JsonNode> items = new ArrayList<>();
 		if (response.statusCode() != 200) {
-			return ids;
+			return items;
 		}
 		try {
 			JsonNode node = json.readTree(response.body());
@@ -334,24 +413,60 @@ class AuthzCheck {
 				}
 			}
 			if (array != null) {
-				for (JsonNode e : array) {
-					JsonNode id = e.path("id");
-					if ((id.isNumber() || id.isString()) && ids.size() < n) {
-						ids.add(id.asString());
-					}
-				}
+				array.forEach(items::add);
 			}
 		}
 		catch (RuntimeException e) {
-			// JSON 이 아니다 — id 없음
+			// JSON 이 아니다 — 항목 없음
+		}
+		return items;
+	}
+
+	/** 항목들의 "id" 를 앞에서부터 n 개 */
+	private static List<String> ids(List<JsonNode> items, int n) {
+		List<String> ids = new ArrayList<>();
+		for (JsonNode e : items) {
+			JsonNode id = e.path("id");
+			if ((id.isNumber() || id.isString()) && ids.size() < n) {
+				ids.add(id.asString());
+			}
 		}
 		return ids;
 	}
 
-	private HttpResponse<String> get(int port, String path, String token) throws IOException, InterruptedException {
-		HttpRequest.Builder request = HttpRequest.newBuilder(URI.create(K6Script.sameApp(target.origin(port), target.origin(port) + path))).timeout(TIMEOUT).GET();
-		if (token != null) {
-			request.header("Authorization", "Bearer " + token);
+	/** 항목의 소유자 값 ({@link #OWNER_FIELDS} 중 처음 있는 스칼라). 없으면 null */
+	static String ownerOf(JsonNode item) {
+		for (String field : OWNER_FIELDS) {
+			JsonNode v = item;
+			for (String part : field.split("\\.")) {
+				v = v.path(part);
+			}
+			if (v.isNumber() || v.isString()) {
+				return v.asString();
+			}
+		}
+		return null;
+	}
+
+	/** A 의 목록이 모두 같은 소유자 값이면 그 값. 하나라도 없거나 섞이면 null (소유자를 알 수 없음) */
+	static String owner(List<JsonNode> items) {
+		String owner = null;
+		for (JsonNode e : items) {
+			String o = ownerOf(e);
+			if (o == null || (owner != null && !owner.equals(o))) {
+				return null;
+			}
+			owner = o;
+		}
+		return owner;
+	}
+
+	private HttpResponse<String> get(int port, String path, ScanLogin.Credential credential) throws IOException, InterruptedException {
+		HttpRequest.Builder request = HttpRequest.newBuilder(URI.create(K6Script.sameApp(target.origin(port), target.origin(port) + path))).timeout(TIMEOUT)
+			.header(K6Script.SCAN_HEADER, K6Script.SCAN_VALUE)
+			.GET();
+		if (credential != null) {
+			request.header(credential.header(), credential.value());
 		}
 		return http.send(request.build(), HttpResponse.BodyHandlers.ofString());
 	}
@@ -375,9 +490,29 @@ class AuthzCheck {
 		return f;
 	}
 
+	/** 관리자 점검이 건너뛴 ZAP 줄을 partial 로 바꿀 때 원래 사유를 남기는 근거 줄 — 도구 상태(ToolStatus)가 다시 읽는다 (!138 리뷰 2-1) */
+	static String skippedLine(String key, String reason) {
+		return "[zap] " + key + " → 건너뜀(" + reason + ")";
+	}
+
+	/** {@link #skippedLine}으로 남긴 원래 사유. 없으면 null */
+	static String skippedReason(String key, String evidence) {
+		if (evidence == null) {
+			return null;
+		}
+		java.util.regex.Matcher m = java.util.regex.Pattern.compile(java.util.regex.Pattern.quote("[zap] " + key + " → 건너뜀(") + "([^)\"]+)\\)")
+			.matcher(evidence);
+		return m.find() ? m.group(1) : null;
+	}
+
+	/** 원본 로그에서 관리자 점검 구간 머리줄 (prefix) */
+	static String adminHeader(String key) {
+		return "== " + key + " · 권한 점검";
+	}
+
 	private static List<String> prefix(String key, List<String> lines) {
 		List<String> out = new ArrayList<>();
-		out.add("== " + key + " · 권한 점검");
+		out.add(adminHeader(key));
 		out.addAll(lines);
 		return out;
 	}

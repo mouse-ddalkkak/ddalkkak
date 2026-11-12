@@ -13,6 +13,7 @@
           "runs": [
             {
               "runId": "run_5",
+              "projectName": "order-api",
               "at": "2026-11-07T14:35:00+09:00",
               "status": "done",
               "tags": [
@@ -21,14 +22,15 @@
               "scenarioCount": 12,
               "codeSource": "GitHub a3f9c1",
               "scores": {
-                "perf": 68,
-                "sec": 79,
-                "code": 92
+                "perf": 80,
+                "sec": 70,
+                "code": 90
               },
               "fixCount": 4
             },
             {
               "runId": "run_4",
+              "projectName": "주문 서비스 v2",
               "at": "2026-11-06T14:02:00+09:00",
               "status": "partial",
               "tags": [
@@ -49,19 +51,19 @@
               54,
               null,
               61,
-              68
+              80
             ],
             "sec": [
               80,
               82,
               83,
-              79
+              70
             ],
             "code": [
               null,
               null,
               null,
-              92
+              90
             ],
             "at": [
               "2026-11-04T14:00:00+09:00",
@@ -70,6 +72,25 @@
               "2026-11-07T14:35:00+09:00"
             ]
           }
+        }
+      }
+    },
+    "PATCH /api/runs/{id}": {
+      "summary": "8 · 6 프로젝트 이름 고치기",
+      "owner": [
+        "B2"
+      ],
+      "request": {
+        "projectName": "주문 서비스 v2"
+      },
+      "responses": {
+        "200": {
+          "runId": "run_5",
+          "projectName": "주문 서비스 v2"
+        },
+        "404": {
+          "code": "NOT_FOUND",
+          "message": "찾을 수 없어요"
         }
       }
     }

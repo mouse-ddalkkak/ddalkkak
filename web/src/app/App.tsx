@@ -7,8 +7,8 @@ import Intro from '../pages/intro/Intro'
 import Setup from '../pages/setup/Setup'
 import Login from '../pages/login/Login'
 import Onboarding from '../pages/onboarding/Onboarding'
+import { ONBOARDING_PATH, parseStep } from '../pages/onboarding/onboardingStep'
 import Home from '../pages/home/Home'
-import CodeSource from '../pages/code-source/CodeSource'
 import Prepare from '../pages/prepare/Prepare'
 import Scope from '../pages/scope/Scope'
 import Run from '../pages/run/Run'
@@ -16,14 +16,13 @@ import Result from '../pages/result/Result'
 import Issue from '../pages/issue/Issue'
 import History from '../pages/history/History'
 
-// hash 라우트 표 (docs/web.md §2). 화면 ID 13개 ↔ 페이지 12개: 2-a · 2-b는 #/code 한 페이지가 응답으로 나눈다
+// hash 라우트 표 (docs/web.md §2). 옛 2-a · 2-b(#/code)는 0-3 ④로 옮겨 없앴다 (-224)
 const ROUTES: [RegExp, ScreenId, (m: string[]) => ReactNode][] = [
   [/^\/intro$/, '0-0', () => <Intro />],
   [/^\/setup$/, '0-1', () => <Setup />],
   [/^\/login$/, '0-2', () => <Login />],
-  [/^\/onboarding$/, '0-3', () => <Onboarding />],
+  [ONBOARDING_PATH, '0-3', (m) => <Onboarding step={parseStep(m[1])} />],
   [/^\/$/, '1', () => <Home />],
-  [/^\/code$/, '2', () => <CodeSource />],
   [/^\/prepare\/([^/]+)$/, '3', (m) => <Prepare runId={m[1]} />],
   [/^\/prepare\/([^/]+)\/scope$/, '4', (m) => <Scope runId={m[1]} />],
   [/^\/runs\/([^/]+)\/progress$/, '5', (m) => <Run runId={m[1]} />],
@@ -93,9 +92,10 @@ function Router() {
 
   if (!ready || !route) return <Layout screen={null}>{null}</Layout>
   // key: 경로(회차 id 포함)가 바뀌면 화면을 새로 그려 폴링 · 입력값을 버린다. 공통 틀(배경 움직임)은 그대로 둔다
+  // 0-3 단계(#/onboarding/N)만은 한 화면이라 허용 · 무시 상태와 폴링을 이어 간다 (-222)
   return (
     <Layout screen={route.id}>
-      <Fragment key={path}>{route.node}</Fragment>
+      <Fragment key={route.id === '0-3' ? route.id : path}>{route.node}</Fragment>
     </Layout>
   )
 }

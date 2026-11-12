@@ -10,6 +10,7 @@ import io.ddalkkak.starter.ServiceRegistry.ConnectedService;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
 import java.util.HashSet;
@@ -40,7 +41,7 @@ public class CodeJobs {
 
 	/** 약속 ④ CodeSource ("이전 설정") */
 	record LastSource(String type, String ref, String branch, String lastCommit, OffsetDateTime lastCommitAt,
-			OffsetDateTime lastFetchedAt, Boolean sameVersion, boolean decompiled) {
+			OffsetDateTime lastFetchedAt, Boolean sameVersion, boolean decompiled, String fileHash) {
 	}
 
 	private static final class Job {
@@ -66,8 +67,11 @@ public class CodeJobs {
 
 	}
 
-	/** 이전 설정으로 내놓는 종류. ZIP 은 이번 검사에만 쓰고, 코드 없이 진행(none)은 줄이 없다 */
+	/** 주소 · 경로를 받아 가져오는 종류 (POST /api/code-source) */
 	private static final List<String> REUSABLE = List.of("github", "jar", "local");
+
+	/** 저장한 방식이 되는 종류 — 가져오기에 성공한 가장 최근 줄. ZIP 은 보관한 파일, none 은 검사마다 코드 없이 (-224 · -242) */
+	private static final List<String> SAVED = List.of("github", "jar", "zip", "local", "none");
 
 	// ponytail: 끝난 작업의 상태도 메모리에 계속 남는다. 서버를 다시 켜면 비워지니 가져오기가 수천 번이 되면 오래된 것부터 지운다
 	private final Map<Long, Job> jobs = new ConcurrentHashMap<>();
@@ -127,11 +131,20 @@ public class CodeJobs {
 		sources.save(row);
 		Job job = new Job(row.id, serviceId, firstStep(type));
 		jobs.put(row.id, job);
-		Thread.ofVirtual().name("code-" + row.id).start(() -> execute(job, row.type, cleanRef, checkedBranch, row.tokenEnc, null));
+		Thread.ofVirtual().name("code-" + row.id).start(() -> execute(job, row.type, cleanRef, checkedBranch, row.tokenEnc, null, false));
 		return "job_" + row.id;
 	}
 
-	/** 올린 ZIP(임시 파일)을 풀기 시작한다. 파일은 작업이 끝나면 지운다. ZIP 이 아니면 ZIP_INVALID */
+	/** 코드 없이 진행(none). 가져올 것이 없어 작업 없이 바로 성공한 줄을 남긴다 — 저장한 방식이 된다 (-224) */
+	void saveNone() {
+		CodeSource row = new CodeSource();
+		row.serviceId = serviceId();
+		row.type = "none";
+		row.lastFetchedAt = LocalDateTime.now();
+		sources.save(row);
+	}
+
+	/** 올린 ZIP(임시 파일)을 풀기 시작한다. 풀리면 {@link CodeSources#keptZip} 하나로 옮겨 두고(앞 것은 바꾼다), 실패하면 지운다. ZIP 이 아니면 ZIP_INVALID */
 	String startZip(String fileName, Path file) {
 		try {
 			fetcher.checkZip(file);
@@ -143,7 +156,7 @@ public class CodeJobs {
 			sources.save(row);
 			Job job = new Job(row.id, serviceId, "extracting");
 			jobs.put(row.id, job);
-			Thread.ofVirtual().name("code-" + row.id).start(() -> execute(job, "zip", fileName, null, null, file));
+			Thread.ofVirtual().name("code-" + row.id).start(() -> execute(job, "zip", fileName, null, null, file, true));
 			return "job_" + row.id;
 		}
 		catch (RuntimeException e) {
@@ -170,25 +183,59 @@ public class CodeJobs {
 		}
 	}
 
+	/**
+	 * 검사 준비 1줄 (-242). 저장한 방식(가져오기에 성공한 가장 최근 줄)을 복사한 새 줄로 다시 가져오기 시작하고 그 줄 id 를 준다.
+	 * GitHub 은 같은 주소 · 브랜치 · 토큰으로 최신 커밋, 실행 파일은 다시 디컴파일, 내 컴퓨터는 다시 복사, ZIP 은 보관한 파일을 다시 푼다.
+	 * 저장한 방식이 없거나 none 이면 empty(코드 없이). 실패한 줄은 last_fetched_at 이 없어 저장한 방식을 바꾸지 않는다 — 끝은 {@link #await}
+	 */
+	public Optional<Long> refetch() {
+		long serviceId = serviceId();
+		CodeSource saved = sources.findFirstByServiceIdAndTypeInAndLastFetchedAtNotNullOrderByIdDesc(serviceId, SAVED).orElse(null);
+		if (saved == null || "none".equals(saved.type)) {
+			return Optional.empty();
+		}
+		CodeSource row = new CodeSource();
+		row.serviceId = serviceId;
+		row.type = saved.type;
+		row.ref = saved.ref;
+		row.branch = saved.branch;
+		row.tokenEnc = saved.tokenEnc;
+		sources.save(row);
+		Job job = new Job(row.id, serviceId, firstStep(row.type));
+		jobs.put(row.id, job);
+		Path zip = "zip".equals(row.type) ? codeSources.keptZip(serviceId) : null;
+		Thread.ofVirtual().name("code-" + row.id).start(() -> execute(job, row.type, row.ref, row.branch, row.tokenEnc, zip, false));
+		return Optional.of(row.id);
+	}
+
 	// ───────── 작업 (뒤에서 돈다) ─────────
 
-	private void execute(Job job, String type, String ref, String branch, String tokenEnc, Path zipFile) {
+	/** @param uploaded zipFile 이 방금 올린 임시 파일이면 true — 풀리면 보관하고 아니면 지운다. 보관한 파일을 다시 풀 때는 false(지우지 않는다) */
+	private void execute(Job job, String type, String ref, String branch, String tokenEnc, Path zipFile, boolean uploaded) {
 		Path dir = codeSources.dir(job.serviceId, job.id);
 		// DB 만 지워 id 가 다시 1부터 시작하면 같은 번호의 옛 폴더가 남아 있다: clone 이 실패하고 복사 · 풀기는 옛 파일이 섞인다
 		CodeFetcher.deleteTree(dir);
 		try {
 			Files.createDirectories(dir.getParent());
+			if ("zip".equals(type) && (zipFile == null || Files.notExists(zipFile))) {
+				throw new ApiException(ErrorCode.ZIP_INVALID); // 보관한 ZIP 이 없다
+			}
 			CodeFetcher.Fetched fetched = switch (type) {
-				case "github" -> fetcher.github(ref, branch, tokenEnc == null ? null : secrets.decrypt(tokenEnc), dir, step(job));
+				case "github" -> fetcher.github(ref, branch, token(tokenEnc), dir, step(job));
 				case "jar" -> fetcher.jar(ref, dir, step(job));
 				case "zip" -> fetcher.zip(zipFile, dir, step(job));
 				default -> fetcher.local(ref, dir, step(job));
 			};
+			// 보관을 먼저 한다: 옮기기가 실패하면 줄에 last_fetched_at 이 없어 저장한 방식이 바뀌지 않는다 (openapi uploadCodeZip)
+			if (uploaded) {
+				keep(zipFile, codeSources.keptZip(job.serviceId));
+			}
 			CodeSource row = sources.findById(job.id).orElseThrow();
 			row.lastCommit = fetched.commit();
 			row.lastCommitAt = fetched.commitAt();
 			row.lastFetchedAt = LocalDateTime.now();
 			row.decompiled = fetched.decompiled();
+			row.fileHash = fetched.fileHash();
 			if (fetched.branch() != null) {
 				row.branch = fetched.branch();
 			}
@@ -213,7 +260,26 @@ public class CodeJobs {
 			finish(job, new ApiError(ErrorCode.SERVER_ERROR));
 		}
 		finally {
-			deleteQuietly(zipFile);
+			if (uploaded) {
+				deleteQuietly(zipFile); // 보관으로 옮겼으면 이미 없다
+			}
+		}
+	}
+
+	/**
+	 * 저장한 토큰. master.key 를 잃어 Secrets 가 새 키를 만들었으면 옛 토큰은 못 푼다 — 토큰 없이 받아 본다(공개 저장소는 받히고, 비공개는
+	 * CODE_FETCH_FAILED "토큰을 확인해 주세요"). "잠시 후 다시"(SERVER_ERROR)는 다시 해도 같으니 틀린 안내다 (-230)
+	 */
+	private String token(String tokenEnc) {
+		if (tokenEnc == null) {
+			return null;
+		}
+		try {
+			return secrets.decrypt(tokenEnc);
+		}
+		catch (IllegalStateException | IllegalArgumentException e) {
+			log.warn("저장한 저장소 토큰을 풀 수 없어요(master.key 가 바뀜) — 토큰 없이 가져와 봐요");
+			return null;
 		}
 	}
 
@@ -296,7 +362,7 @@ public class CodeJobs {
 				job.error);
 	}
 
-	/** GET /api/code-source — 가장 최근에 가져오는 데 성공한 GitHub · 실행 파일 · 내 컴퓨터 설정. 없으면 empty */
+	/** GET /api/code-source — 저장한 방식 = 가장 최근에 가져오는 데 성공한 줄(ZIP · 코드 없이도). 없으면 empty */
 	Optional<LastSource> last() {
 		Optional<ConnectedService> service = services.current();
 		if (service.isEmpty()) {
@@ -310,13 +376,29 @@ public class CodeJobs {
 			return Optional.empty();
 		}
 		String running = running();
-		return sources.findFirstByServiceIdAndTypeInAndLastFetchedAtNotNullOrderByIdDesc(serviceId, REUSABLE)
+		return sources.findFirstByServiceIdAndTypeInAndLastFetchedAtNotNullOrderByIdDesc(serviceId, SAVED)
 			.map(s -> new LastSource(s.type, s.ref, s.branch, s.lastCommit, CodeSources.kst(s.lastCommitAt), CodeSources.kst(s.lastFetchedAt),
-					CodeSources.sameVersion(s.lastCommit, running), s.decompiled));
+					CodeSources.sameVersion(s.lastCommit, running), s.decompiled, s.fileHash));
 	}
 
 	private String running() {
 		return services.current().map(ConnectedService::runningCommit).orElse(null);
+	}
+
+	/**
+	 * 올린 ZIP 을 보관 자리로 바꿔 넣는다. 임시 파일(/tmp)과 보관 자리(설치본은 볼륨)는 파일 시스템이 달라 move 가 복사가 되고, 그 move 는
+	 * 앞 파일을 먼저 지운다 — 그래서 같은 폴더에 다 쓴 뒤 rename 으로 바꾼다. 쓰다 실패해도 앞 ZIP(저장한 방식)이 남는다
+	 */
+	private static void keep(Path upload, Path kept) throws IOException {
+		Files.createDirectories(kept.getParent());
+		Path partial = kept.resolveSibling(kept.getFileName() + ".tmp");
+		try {
+			Files.move(upload, partial, StandardCopyOption.REPLACE_EXISTING);
+			Files.move(partial, kept, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+		}
+		finally {
+			deleteQuietly(partial);
+		}
 	}
 
 	private static void deleteQuietly(Path file) {

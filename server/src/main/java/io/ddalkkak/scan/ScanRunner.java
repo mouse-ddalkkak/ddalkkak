@@ -8,6 +8,8 @@ import io.ddalkkak.run.RunStatus;
 import io.ddalkkak.scope.ScenarioStore;
 import io.ddalkkak.starter.Measurements;
 import io.ddalkkak.starter.ServiceRegistry;
+import java.time.Clock;
+import java.time.Instant;
 import java.time.ZoneId;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -39,6 +41,9 @@ public class ScanRunner {
 
 	static final String HALTED = SemgrepRunner.HALTED;
 
+	/** 시작할 때 앱이 연결돼 있지 않아 도구를 하나도 띄우지 않음 (scan.md §1 · §9). 도구 문제가 아니라 도구 상태 최근 오류로 세지 않는다 (!124 리뷰 2-1) */
+	static final String APP_OFFLINE = "앱 연결 끊김";
+
 	private final ScanProgress progress;
 
 	private final ScenarioStore store;
@@ -50,6 +55,8 @@ public class ScanRunner {
 	private final ServiceRegistry services;
 
 	private final TestAccounts accounts;
+
+	private final TargetAuth targetAuth;
 
 	private final K6Runner k6;
 
@@ -74,10 +81,14 @@ public class ScanRunner {
 	/** 멈춘 뒤 고르지 않으면 이만큼 기다렸다가 여기까지 결과로 정리한다 — 화면을 닫아도 회차가 running 으로 남아 409 로 막히지 않게 */
 	private final Duration decisionWait;
 
+	private final Clock clock;
+
 	ScanRunner(ScanProgress progress, ScenarioStore store, RunLookup runs, RunLifecycle lifecycle, ServiceRegistry services,
-			TestAccounts accounts, K6Runner k6, SemgrepRunner semgrep, ZapRunner zap, AuthzCheck authz, RawResultWriter writer,
-			RawResultRepository results, Measurements measurements, MeasureSampleRepository samples, JsonMapper json, StallWatch stall,
-			@Value("${ddalkkak.stall.wait:30m}") Duration decisionWait) {
+			TestAccounts accounts, TargetAuth targetAuth, K6Runner k6, SemgrepRunner semgrep, ZapRunner zap, AuthzCheck authz,
+			RawResultWriter writer, RawResultRepository results, Measurements measurements, MeasureSampleRepository samples, JsonMapper json,
+			StallWatch stall, Clock clock, @Value("${ddalkkak.stall.wait:30m}") Duration decisionWait) {
+		this.targetAuth = targetAuth;
+		this.clock = clock;
 		this.stall = stall;
 		this.decisionWait = decisionWait;
 		this.zap = zap;
@@ -99,11 +110,34 @@ public class ScanRunner {
 
 	/** running 이 된 회차의 검사 스레드를 띄운다. 범위는 B2 ScenarioStore.scope(runId) */
 	void launch(String runId) {
+		launch(runId, false);
+	}
+
+	/**
+	 * 검사 스레드를 띄운다. 이 회차에 이미 끝난 시나리오 줄이 있으면(-228 이어서 검사) 그 시나리오는 다시 돌리지 않고, 끝나지 않은 줄(끊긴 도구 ·
+	 * 돌지 못한 도구)은 지우고 다시 돈다 — 처음 검사는 줄이 없어 전부 돈다. partialOnly 면 도구 없이 지금까지의 줄로 결과 정리만(여기까지)
+	 */
+	private void launch(String runId, boolean partialOnly) {
 		try {
 			RunLookup.Info info = runs.find(runId).orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND));
 			List<ScenarioStore.Item> scope = store.scope(runId);
+			Map<String, RawReport.Result> done = partialOnly ? saved(info.id()) : kept(info.id(), scope);
 			ScanProgress.RunState state = progress.open(runId, scope);
-			state.thread = Thread.ofVirtual().name("scan-" + runId).start(() -> scan(state, info, scope));
+			for (ScenarioStore.Item item : scope) {
+				RawReport.Result r = done.get(item.key());
+				if (r != null) {
+					progress.itemDone(state, ScanProgress.stepOf(item), item.key(), r.status(), r.skipReason());
+				}
+			}
+			if (partialOnly) {
+				lifecycle.stopChosen(runId); // 여기까지를 골랐다 — 결과 정리 중에 꺼져도 다시 묻지 않게 (!143 리뷰 3-3)
+				state.partial = true;
+				state.thread = Thread.ofVirtual().name("scan-" + runId)
+					.start(() -> report(state, scope, new HashSet<>(done.keySet()), true, K6Runner.TOOL_ERROR));
+			}
+			else {
+				state.thread = Thread.ofVirtual().name("scan-" + runId).start(() -> scan(state, info, scope, done));
+			}
 		}
 		catch (RuntimeException e) {
 			// RunLifecycle.start 가 이미 running 으로 바꿨다 — 스레드 없이 남으면 서버 재시작 전까지 그 서비스가 모두 409 (!63 리뷰 1-4)
@@ -115,6 +149,52 @@ public class ScanRunner {
 			}
 			throw e;
 		}
+	}
+
+	/**
+	 * 딸깍 재시작으로 멈춘 회차 (-228, F-STOP-05): 이어서 검사(멈춘 시나리오부터) · 여기까지 결과 보기(partialOnly — 도구 없이 결과 정리,
+	 * 남은 시나리오는 중단됨). 기다리는 회차가 아니면 NOT_FOUND, 같은 서비스가 검사 중이면 RUN_IN_PROGRESS. 이어서는 그 회차의 앱이 지금
+	 * 연결돼 있어야 한다(SERVICE_OFFLINE) — 꺼졌으면 남은 시나리오가 모두 앱 연결 끊김으로 끝나고, 다른 앱이면 그 앱을 이 범위로 검사하게 된다
+	 *
+	 * @return 지금 회차 상태 running — 끝 상태는 결과 정리 뒤 SSE done
+	 */
+	String resume(String runId, boolean partialOnly) {
+		RunLookup.Info info = runs.find(runId).filter(r -> lifecycle.interrupted(runId))
+			.orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND));
+		if (!partialOnly && services.current()
+			.filter(s -> s.connected() && s.id().equals("svc_" + info.serviceId()))
+			.isEmpty()) {
+			throw new ApiException(ErrorCode.SERVICE_OFFLINE);
+		}
+		lifecycle.resume(runId);
+		launch(runId, partialOnly);
+		return RunStatus.RUNNING.value();
+	}
+
+	/** 이 회차의 줄 전부 (시나리오마다 마지막 것) — 여기까지 결과 보기는 끊긴 줄도 그대로 결과로 */
+	private Map<String, RawReport.Result> saved(Long runId) {
+		Map<String, RawReport.Result> all = new LinkedHashMap<>();
+		results.findByRunIdOrderById(runId).forEach(r -> all.put(r.itemKey, writer.toResult(r)));
+		return all;
+	}
+
+	/**
+	 * 이어서 검사: 끝난 줄만 남기고 나머지는 지운다. 코드 품질은 Semgrep 한 번이 발견을 시나리오에 나눠 주니 하나라도 끝나지 않았으면 코드 줄을
+	 * 모두 지우고 묶음째 다시 — 일부만 다시 돌면 같은 발견이 두 줄에 들어간다
+	 */
+	private Map<String, RawReport.Result> kept(Long runId, List<ScenarioStore.Item> scope) {
+		List<RawResultRow> rows = results.findByRunIdOrderById(runId);
+		if (rows.isEmpty()) {
+			return Map.of();
+		}
+		Set<String> code = new HashSet<>(scope.stream().filter(i -> "code".equals(i.area())).map(ScenarioStore.Item::key).toList());
+		Set<String> finished = new HashSet<>(rows.stream().filter(RawResults::finished).map(r -> r.itemKey).toList());
+		boolean codeAgain = !finished.containsAll(code);
+		List<RawResultRow> drop = rows.stream().filter(r -> !RawResults.finished(r) || (codeAgain && code.contains(r.itemKey))).toList();
+		results.deleteAll(drop);
+		Map<String, RawReport.Result> keep = new LinkedHashMap<>();
+		rows.stream().filter(r -> !drop.contains(r)).forEach(r -> keep.put(r.itemKey, writer.toResult(r)));
+		return keep;
 	}
 
 	/**
@@ -130,6 +210,7 @@ public class ScanRunner {
 		}
 		synchronized (state) {
 			if (!state.reporting) {
+				lifecycle.stopChosen(runId); // 결과 정리 중에 꺼져도 이어서 묻지 않게 (!143 리뷰 3-3)
 				state.stopping = true;
 				state.thread.interrupt();
 			}
@@ -137,32 +218,65 @@ public class ScanRunner {
 		}
 	}
 
-	private void scan(ScanProgress.RunState state, RunLookup.Info info, List<ScenarioStore.Item> scope) {
+	/** done = 이미 끝난 시나리오(이어서 검사). 그 시나리오는 다시 돌리지 않는다 */
+	private void scan(ScanProgress.RunState state, RunLookup.Info info, List<ScenarioStore.Item> scope,
+			Map<String, RawReport.Result> done) {
 		String runId = state.runId;
-		Set<String> written = new HashSet<>();
+		// 이어서 검사의 끝난 시나리오는 이미 줄이 있다 — 도중에 일찍 끝나도 결과 정리가 그 시나리오에 줄을 하나 더 쓰지 않게 (!143 리뷰 2-1)
+		Set<String> written = new HashSet<>(done.keySet());
 		boolean stopped = false;
+		String leftover = K6Runner.TOOL_ERROR;
 		try {
 			// 연결 확인
 			progress.enter(state, "check");
-			Optional<ServiceRegistry.ConnectedService> service = services.current().filter(ServiceRegistry.ConnectedService::connected);
+			// 회차의 서비스가 아닌 다른 앱이 연결돼 있어도 끊긴 것이다 — 해제 뒤 다른 앱을 허용하면 그 앱을 검사하게 된다 (-223, scan.md §1)
+			Optional<ServiceRegistry.ConnectedService> service = services.current()
+				.filter(s -> s.id().equals("svc_" + info.serviceId()))
+				.filter(ServiceRegistry.ConnectedService::connected);
 			if (service.isEmpty()) {
-				progress.log(state, "check", "앱에 연결할 수 없어요 → 남은 시나리오는 도구 오류");
-				progress.finishStep(state, "check", K6Runner.TOOL_ERROR);
+				leftover = APP_OFFLINE;
+				progress.log(state, "check", "앱에 연결할 수 없어요 → 남은 시나리오는 " + APP_OFFLINE);
+				progress.finishStep(state, "check", APP_OFFLINE);
 				return;
 			}
 			int port = service.get().port();
 			progress.log(state, "check", service.get().name() + " " + service.get().host() + ":" + port + " 연결 확인 · ok");
 			progress.finishStep(state, "check", null);
 
-			// 테스트 계정
+			// 로그인 · 테스트 계정 — 화면 4 에서 로그인을 확인하기 전에는 고객 앱에 가입 · 로그인 요청을 보내지 않는다 (-230).
+			// 이어서 검사면 이 회차가 만든 테스트 계정으로 다시 로그인만 한다(로그인 값은 메모리에만 있어 재시작으로 사라짐, -228). 처음 검사는 빈 목록
 			progress.enter(state, "auth");
-			List<TestAccounts.Account> made = List.of();
-			Optional<ScenarioStore.Item> account = scope.stream().filter(ScanProgress::isAccount).findFirst();
-			if (account.isPresent()) {
+			// 이어서 검사인데 남은 시나리오가 없으면(결과 정리 중에 꺼짐) 고객 앱에 로그인 · 가입하지 않고 끝난 계정 줄을 그대로 둔다 (!143 셀프 리뷰 3차 2)
+			boolean left = done.isEmpty() || scope.stream().anyMatch(i -> !ScanProgress.isAccount(i) && !done.containsKey(i.key()));
+			if (!left) {
+				progress.log(state, "auth", "남은 시나리오가 없어 로그인 · 테스트 계정은 건너뛰어요");
+			}
+			ScanLogin login = left ? targetAuth.session(info, port, line -> progress.log(state, "auth", line)) : ScanLogin.NONE;
+			List<TestAccounts.Account> made = login.confirmed()
+					? accounts.relogin(info.id(), info.snapshotId(), port, line -> progress.log(state, "auth", line)) : List.of();
+			Optional<ScenarioStore.Item> account = left ? scope.stream().filter(ScanProgress::isAccount).findFirst() : Optional.empty();
+			// 만든 계정으로 다시 로그인하지 못하면(고객 앱이 다시 떠 데이터가 지워짐 등) 계정 단계를 다시 돈다 — 남은 로그인 필요 시나리오가
+			// 계정 없음이 되지 않게 (!143 리뷰 2). 지난번에도 계정이 없었으면(계정 없음) 끝난 그대로
+			RawReport.Result before = account.map(i -> done.get(i.key())).orElse(null);
+			if (before != null && !(made.isEmpty() && "done".equals(before.status()))) {
+				written.add(account.get().key());
+			}
+			else if (account.isPresent()) {
 				ScenarioStore.Item item = account.get();
+				if (before != null) {
+					results.deleteAll(results.findByRunIdOrderById(info.id()).stream().filter(r -> item.key().equals(r.itemKey)).toList());
+					written.remove(item.key());
+				}
 				progress.itemRunning(state, "auth", item.key());
 				int count = Math.max(1, Math.min(5, item.params().path("count").asInt(1)));
-				made = accounts.create(info.id(), info.snapshotId(), port, count, line -> progress.log(state, "auth", line));
+				if (made.isEmpty()) {
+					// 저장한 계정으로 로그인하지 못했다 — 고객 앱에서 사라진 옛 계정을 남기면 결과 원본 · 재현 조건이 그 계정을 보인다.
+					// 계정 단계 도중에 꺼져 계정 줄이 없을 때도 같다 (!143 리뷰 3-2 · 셀프 리뷰 3차 1)
+					accounts.forget(info.id());
+					if (login.confirmed()) {
+						made = accounts.create(info.id(), info.snapshotId(), port, count, line -> progress.log(state, "auth", line));
+					}
+				}
 				RawResultRow row = writer.start(runId, item);
 				RawReport.Result result;
 				if (made.isEmpty()) {
@@ -178,11 +292,10 @@ public class ScanRunner {
 				written.add(item.key());
 				progress.itemDone(state, "auth", item.key(), result.status(), result.skipReason());
 			}
-			else {
+			else if (left) {
 				progress.log(state, "auth", "테스트 계정 만들기 시나리오가 없어요 → 계정 없이 진행");
 				progress.finishStep(state, "auth", null);
 			}
-			String token = made.isEmpty() ? null : made.getFirst().token();
 			stopped = stopping(state);
 
 			// 1 보안 — ZAP(공격 흉내) · 권한 점검(딸깍이 직접), 영역 안 시나리오를 차례로
@@ -196,6 +309,10 @@ public class ScanRunner {
 				.or(() -> sec.stream().filter(i -> "zap".equals(i.tool())).map(ScenarioStore.Item::key).findFirst())
 				.orElse(null);
 			for (ScenarioStore.Item item : sec) {
+				if (done.containsKey(item.key())) {
+					written.add(item.key());
+					continue;
+				}
 				if (stopped) {
 					RawReport.Result result = writer.skip(writer.start(runId, item), HALTED);
 					written.add(item.key());
@@ -207,7 +324,7 @@ public class ScanRunner {
 				progress.log(state, tag, item.key() + " " + item.title() + (item.api() == null ? "" : " · " + item.api()) + " 시작");
 				RawReport.Result result;
 				if ("zap".equals(item.tool())) {
-					result = watched(state, info, "sec", "zap", item, port, () -> zap.run(runId, item, token));
+					result = watched(state, info, "sec", "zap", List.of(item), port, true, () -> List.of(zap.run(runId, item, login))).getFirst();
 					if (item.key().equals(adminOwner) && !state.stopping && !state.partial) {
 						result = authz.addAdmin(runId, item, result);
 					}
@@ -236,6 +353,10 @@ public class ScanRunner {
 			progress.enter(state, "perf");
 			List<ScenarioStore.Item> perf = scope.stream().filter(i -> "perf".equals(i.area())).toList();
 			for (ScenarioStore.Item item : perf) {
+				if (done.containsKey(item.key())) {
+					written.add(item.key());
+					continue;
+				}
 				if (stopped) {
 					RawReport.Result result = writer.skip(writer.start(runId, item), HALTED);
 					written.add(item.key());
@@ -245,21 +366,26 @@ public class ScanRunner {
 				progress.itemRunning(state, "perf", item.key());
 				progress.log(state, "k6", item.key() + " " + item.api() + " · " + people(item) + " 시작");
 				List<Measurements.Sample> got = new CopyOnWriteArrayList<>();
-				RawReport.Result result = watched(state, info, "perf", "k6", item, port, () -> {
+				Instant[] window = new Instant[2]; // k6 가 돈 구간 — 그동안의 생존 신호 CPU 를 근거로 (-248)
+				RawReport.Result result = watched(state, info, "perf", "k6", List.of(item), port, true, () -> {
 					got.clear(); // 다시 시도면 그 시도의 샘플만
+					window[0] = clock.instant();
 					measurements.start(runId, batch -> {
 						got.addAll(batch);
 						save(info.id(), batch);
 					});
 					try {
-						return k6.run(runId, item, token);
+						return List.of(k6.run(runId, item, login));
 					}
 					finally {
 						measurements.stop(runId);
+						window[1] = clock.instant();
 					}
-				});
+				}).getFirst();
 				stopped = stopping(state);
-				result = withMeasures(info.id(), item, result, got);
+				List<Double> cpu = window[0] == null || window[1] == null ? List.of()
+						: services.cpuBetween(info.serviceId(), window[0], window[1]);
+				result = withMeasures(info.id(), item, result, got, cpu);
 				written.add(item.key());
 				if (result.evidence() != null) {
 					result.evidence().forEach(line -> progress.log(state, line.startsWith("[db]") ? "db" : "k6", strip(line)));
@@ -275,9 +401,14 @@ public class ScanRunner {
 
 			// 3 코드 품질 — 회차당 Semgrep 한 번
 			progress.enter(state, "code");
-			List<ScenarioStore.Item> code = scope.stream().filter(i -> "code".equals(i.area())).toList();
-			if (code.isEmpty()) {
+			List<ScenarioStore.Item> all = scope.stream().filter(i -> "code".equals(i.area())).toList();
+			all.stream().filter(i -> done.containsKey(i.key())).forEach(i -> written.add(i.key()));
+			List<ScenarioStore.Item> code = all.stream().filter(i -> !done.containsKey(i.key())).toList();
+			if (all.isEmpty()) {
 				progress.finishStep(state, "code", info.hasCode() ? null : SemgrepRunner.NO_CODE);
+			}
+			else if (code.isEmpty()) {
+				// 이어서 검사 — 코드 품질은 이미 끝났다
 			}
 			else if (stopped) {
 				for (ScenarioStore.Item item : code) {
@@ -289,9 +420,9 @@ public class ScanRunner {
 			else {
 				code.forEach(item -> progress.itemRunning(state, "code", item.key()));
 				progress.log(state, "semgrep", String.join(" · ", code.stream().map(ScenarioStore.Item::key).toList()) + " 시작");
-				List<RawReport.Result> done = semgrep.runAll(runId, code);
+				List<RawReport.Result> ran = watched(state, info, "code", "semgrep", code, port, false, () -> semgrep.runAll(runId, code));
 				stopped = stopping(state);
-				for (RawReport.Result result : done) {
+				for (RawReport.Result result : ran) {
 					written.add(result.itemKey());
 					if (result.evidence() != null) {
 						result.evidence().forEach(line -> progress.log(state, "semgrep", result.itemKey() + " " + strip(line)));
@@ -305,12 +436,13 @@ public class ScanRunner {
 			progress.log(state, "check", "검사 중 오류가 났어요 → 남은 시나리오는 도구 오류");
 		}
 		finally {
-			report(state, scope, written, stopped || stopping(state));
+			report(state, scope, written, stopped || stopping(state), leftover);
 		}
 	}
 
-	/** 결과 정리: 못 쓴 시나리오를 채우고 B2 onScanFinished 를 부른 뒤 SSE done */
-	private void report(ScanProgress.RunState state, List<ScenarioStore.Item> scope, Set<String> written, boolean stopped) {
+	/** 결과 정리: 못 쓴 시나리오를 leftover(멈췄으면 중단됨)로 채우고 B2 onScanFinished 를 부른 뒤 SSE done */
+	private void report(ScanProgress.RunState state, List<ScenarioStore.Item> scope, Set<String> written, boolean stopped,
+			String leftover) {
 		String runId = state.runId;
 		synchronized (state) {
 			// 이 뒤로 온 stop 은 인터럽트하지 않는다. 이미 걸린 인터럽트는 지운다 — AI 호출 · DB 쓰기를 끊지 않게 (멈춤은 stopped 로 기억)
@@ -323,8 +455,8 @@ public class ScanRunner {
 				continue;
 			}
 			try {
-				RawReport.Result result = writer.skip(writer.start(runId, item), stopped ? HALTED : K6Runner.TOOL_ERROR);
-				progress.itemDone(state, step(item), item.key(), result.status(), result.skipReason());
+				RawReport.Result result = writer.skip(writer.start(runId, item), stopped ? HALTED : leftover);
+				progress.itemDone(state, ScanProgress.stepOf(item), item.key(), result.status(), result.skipReason());
 			}
 			catch (RuntimeException e) {
 				log.warn("검사 {} 시나리오 {} 를 남기지 못했어요: {}", runId, item.key(), e.toString());
@@ -345,41 +477,63 @@ public class ScanRunner {
 		progress.done(state, "running".equals(status) ? end.value() : status);
 	}
 
-	private static String step(ScenarioStore.Item item) {
-		return switch (item.area()) {
-			case "perf" -> "perf";
-			case "code" -> "code";
-			default -> ScanProgress.isAccount(item) ? "auth" : "sec";
-		};
-	}
-
 	/** 중단 · 여기까지가 들어왔는지. 도구가 다시 세운 인터럽트 플래그는 여기서 지운다 — 남은 DB 쓰기 · 파일 쓰기가 끊기지 않게 */
 	private static boolean stopping(ScanProgress.RunState state) {
 		return Thread.interrupted() | state.stopping | state.partial;
 	}
 
 	/**
-	 * 고객 앱을 때리는 도구(k6 · ZAP)를 멈춤 감시와 같이 돌린다 (scan.md §8 · F-STOP-01~03). 감시가 멈춤을 잡으면 검사 스레드를
-	 * 인터럽트해 도구 컨테이너를 멈추고(중단과 같은 길), SSE error 를 보낸 뒤 고를 때까지 기다린다: 다시 시도면 그 시나리오 줄을 지우고 처음부터,
-	 * 여기까지면 state.partial, 중단이면 stop 이 인터럽트한다. {@link #decisionWait} 동안 고르지 않으면 여기까지
+	 * 도커 도구(k6 · ZAP · Semgrep)를 돌린다. 고객 앱을 때리는 k6 · ZAP 은 멈춤 감시(watch)와 같이 (scan.md §8 · F-STOP-01~03): 감시가 멈춤을
+	 * 잡으면 검사 스레드를 인터럽트해 도구 컨테이너를 멈추고(중단과 같은 길), SSE error 를 보낸 뒤 고를 때까지 기다린다.
+	 * <p>
+	 * 도구가 돌지 못했으면(도구 받기 실패 · 도구 오류 — -229 DockerTool 분류를 Runner 가 사유로 남긴 것) 한 번 더 돌린다. 쓰기 API(GET 이
+	 * 아님) 시나리오는 공격 요청을 다시 보내니 자동으로 돌리지 않는다. 또 실패하면 멈춤과 같은 팝업으로 고르게 한다 (-228, F-STOP-04).
+	 * <p>
+	 * 고른 것: 다시 시도면 그 시나리오 줄(Semgrep 이면 묶음)을 지우고 처음부터, 여기까지면 state.partial, 중단이면 stop 이 인터럽트한다.
+	 * {@link #decisionWait} 동안 고르지 않으면 여기까지. items 는 한 번에 도는 시나리오(k6 · ZAP 은 하나, Semgrep 은 코드 품질 전부)
 	 */
-	private RawReport.Result watched(ScanProgress.RunState state, RunLookup.Info info, String step, String tag, ScenarioStore.Item item,
-			int port, java.util.function.Supplier<RawReport.Result> tool) {
+	private List<RawReport.Result> watched(ScanProgress.RunState state, RunLookup.Info info, String step, String tag,
+			List<ScenarioStore.Item> items, int port, boolean watch, java.util.function.Supplier<List<RawReport.Result>> tool) {
+		ScenarioStore.Item item = items.getFirst();
+		Set<String> keys = new HashSet<>(items.stream().map(ScenarioStore.Item::key).toList());
 		while (true) {
-			RawReport.Result result;
-			try (StallWatch.Handle h = stall.watch(port, item.api(), () -> stalled(state))) {
+			List<RawReport.Result> result;
+			if (watch) {
+				try (StallWatch.Handle h = stall.watch(port, item.api(), () -> stalled(state))) {
+					result = tool.get();
+				}
+			}
+			else {
 				result = tool.get();
 			}
-			if (!state.stalled) {
-				return result;
+			String text;
+			if (state.stalled) {
+				Thread.interrupted(); // 멈춤 인터럽트는 지운다 — 중단이면 state.stopping 이 남는다
+				state.stalled = false;
+				if (state.stopping) {
+					return result;
+				}
+				text = ScanProgress.STALLED;
 			}
-			Thread.interrupted(); // 멈춤 인터럽트는 지운다 — 중단이면 state.stopping 이 남는다
-			state.stalled = false;
-			if (state.stopping) {
-				return result;
+			else {
+				Optional<RawReport.Result> failed = result.stream().filter(ScanRunner::toolFailed).findFirst();
+				if (failed.isEmpty() || state.stopping || state.partial) {
+					return result;
+				}
+				if (items.stream().allMatch(ScanRunner::readOnly) && state.retried.add(item.key())) {
+					drop(info, keys);
+					items.forEach(i -> progress.itemRunning(state, step, i.key()));
+					progress.log(state, tag, item.key() + " → " + failed.get().skipReason() + " · 한 번 더 실행해요");
+					continue;
+				}
+				Thread.interrupted(); // 남은 인터럽트가 기다림을 끊지 않게 — 중단이면 state.stopping 이 남는다
+				if (state.stopping) {
+					return result;
+				}
+				text = ScanProgress.TOOL_FAILED + " · " + failed.get().skipReason();
 			}
-			progress.error(state, step, item, tag, rawTail(state.runId, item.key()));
-			progress.log(state, tag, item.key() + " · " + "서버가 응답을 멈췄어요 → 도구를 멈추고 기다려요");
+			progress.error(state, step, item, tag, rawTail(state.runId, item.key()), text);
+			progress.log(state, tag, item.key() + " · " + text + (watch && ScanProgress.STALLED.equals(text) ? " → 도구를 멈추고 기다려요" : " → 고를 때까지 기다려요"));
 			String decision;
 			try {
 				decision = state.decisions.poll(decisionWait.toMillis(), java.util.concurrent.TimeUnit.MILLISECONDS);
@@ -402,16 +556,32 @@ public class ScanRunner {
 				return result; // 다시 시도와 중단이 겹치면 중단 — 지우고 다시 띄웠다 바로 멈추지 않게 (6-4)
 			}
 			if ("retry".equals(decision)) {
-				results.deleteAll(results.findByRunIdOrderById(info.id()).stream().filter(r -> item.key().equals(r.itemKey)).toList());
-				progress.itemRunning(state, step, item.key());
+				drop(info, keys);
+				items.forEach(i -> progress.itemRunning(state, step, i.key()));
 				progress.log(state, tag, item.key() + " 다시 시도");
 				continue;
 			}
 			if ("partial".equals(decision)) {
+				lifecycle.stopChosen(state.runId); // 결과 정리 중에 꺼져도 이어서 묻지 않게 (!143 리뷰 3-3)
 				state.partial = true;
 			}
 			return result;
 		}
+	}
+
+	/** 그 시나리오들의 줄을 지운다 — 다시 돌기 전에 (한 시나리오에 줄 하나) */
+	private void drop(RunLookup.Info info, Set<String> keys) {
+		results.deleteAll(results.findByRunIdOrderById(info.id()).stream().filter(r -> keys.contains(r.itemKey)).toList());
+	}
+
+	/** 도구가 돌지 못함 — 다시 돌릴 인프라 오류 (scan.md §9 도구 실패 분류: 도구 받기 실패 · 도구 오류) */
+	private static boolean toolFailed(RawReport.Result r) {
+		return "skipped".equals(r.status()) && (K6Runner.TOOL_ERROR.equals(r.skipReason()) || K6Runner.PULL_FAILED.equals(r.skipReason()));
+	}
+
+	/** 고객 앱 데이터를 바꾸지 않는 시나리오 — GET 이거나 고객 앱을 부르지 않음(코드 품질). K6Runner 의 GET 판정과 같다 */
+	private static boolean readOnly(ScenarioStore.Item item) {
+		return item.api() == null || item.api().strip().regionMatches(true, 0, "GET ", 0, 4);
 	}
 
 	/** 그 시나리오 원본 로그(도구가 낸 줄)에서 마지막 "== {itemKey} " 머리줄부터 끝까지 */
@@ -518,10 +688,12 @@ public class ScanRunner {
 
 	/**
 	 * 시나리오가 도는 동안 그 API 의 샘플 → metrics dbQueriesPerRequest(평균) · poolWaitingMax(최대) + 근거 "[db] …" (scan.md §3).
+	 * 생존 신호 CPU(앱 PC, 0~1) → hostCpuMax · hostCpuAvg + 근거 "[host] …" (-248).
 	 * 스타터킷이 안 보냈으면(미측정) 그 칸은 넣지 않는다. sameQueryRatio 는 원본이 없어 늘 넣지 않는다
 	 */
-	private RawReport.Result withMeasures(Long runId, ScenarioStore.Item item, RawReport.Result result, List<Measurements.Sample> got) {
-		if (result.metrics() == null || got.isEmpty()) {
+	private RawReport.Result withMeasures(Long runId, ScenarioStore.Item item, RawReport.Result result, List<Measurements.Sample> got,
+			List<Double> cpu) {
+		if (result.metrics() == null) {
 			return result;
 		}
 		List<Measurements.Sample> mine = got.stream().filter(s -> item.api().equals(s.api())).toList();
@@ -529,7 +701,7 @@ public class ScanRunner {
 			.mapToDouble(Double::doubleValue).average().stream().boxed().findFirst().orElse(null);
 		Integer waiting = mine.stream().map(Measurements.Sample::poolWaiting).filter(v -> v != null)
 			.max(Integer::compare).orElse(null);
-		if (queries == null && waiting == null) {
+		if (queries == null && waiting == null && cpu.isEmpty()) {
 			return result;
 		}
 		RawResultRow row = results.findByRunIdOrderById(runId).stream()
@@ -551,6 +723,13 @@ public class ScanRunner {
 		}
 		if (waiting != null) {
 			metrics.put("poolWaitingMax", waiting);
+		}
+		if (!cpu.isEmpty()) {
+			double max = cpu.stream().mapToDouble(Double::doubleValue).max().orElseThrow();
+			double avg = Math.round(cpu.stream().mapToDouble(Double::doubleValue).average().orElseThrow() * 100) / 100.0;
+			metrics.put("hostCpuMax", max);
+			metrics.put("hostCpuAvg", avg);
+			evidence.add("[host] cpu max=" + Math.round(max * 100) + "% avg=" + Math.round(avg * 100) + "%");
 		}
 		row.metrics = json.writeValueAsString(metrics);
 		row.evidence = json.writeValueAsString(evidence);
