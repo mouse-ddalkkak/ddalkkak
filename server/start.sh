@@ -211,7 +211,8 @@ if running ddalkkak "$IMAGE" "$SERVER_CONFIG"; then
 	exit 0
 fi
 docker rm -f ddalkkak >/dev/null 2>&1 || true
-set -- -e "SERVER_PORT=$INNER_PORT" -e "DB_USERNAME=ddalkkak" -e "DB_PASSWORD=$DB_PASSWORD" -e "DATA_HOST_DIR=$DATA_HOST_DIR"
+# HOST_PORT: 이 컴퓨터에서 여는 포트. desktop 은 컨테이너 안이 늘 7777 이라 서버가 모른다 — 0-3 이 DDALKKAK_URL 안내에 쓴다
+set -- -e "SERVER_PORT=$INNER_PORT" -e "HOST_PORT=$SERVER_PORT" -e "DB_USERNAME=ddalkkak" -e "DB_PASSWORD=$DB_PASSWORD" -e "DATA_HOST_DIR=$DATA_HOST_DIR"
 for kv in $SERVER_ENV; do set -- "$@" -e "$kv"; done
 if [ -n "$HOME_SRC" ]; then set -- "$@" -v "$HOME_SRC:/host-home:ro" -e "HOST_HOME=${HOST_HOME:-}" -e HOME_MOUNT=/host-home; fi
 # shellcheck disable=SC2086

@@ -43,6 +43,8 @@ export default function Login() {
         </Button>
         <span className={s.hint}>
           비밀번호를 잊었다면 서버에서 <code className={s.cmd}>docker exec ddalkkak ddalkkak reset-password</code>
+          <br />
+          Compose로 띄웠다면 <code className={s.cmd}>docker compose exec ddalkkak ddalkkak reset-password</code>
         </span>
       </form>
     </div>

@@ -518,13 +518,13 @@ class RunPrepare {
 	/**
 	 * 권한 점검만 받으려고 더 실은 API(-238)를 AI 서버는 바뀐 API 로 보고 성능 · 기본 공격 범위도 새로 만든다. 그 API 를 대상으로 한 카드는
 	 * 권한 점검만 받고, 그 API 의 지난 카드는 그대로 쓴다. 받은 카드의 key 가 되살린 key 와 겹치면(save 는 뒤의 것만 남긴다) 그 영역의 빈 번호로 바꾼다.
-	 * 기본 공격 범위는 AI 서버가 apis 중 호출 1위 하나에만 만드니, 더 실은 API 가 1위라 그리로 갔으면 버리지 않고 바뀐 API 중 1위로 옮긴다 —
+	 * 기본 공격 범위는 AI 서버가 apis 중 호출 1위(같으면 _ranked 순서, ScenarioStore.byCalls) 하나에만 만드니, 더 실은 API 가 1위라 그리로 갔으면 버리지 않고 바뀐 API 중 1위로 옮긴다 —
 	 * 안 그러면 바뀐 API 의 ZAP 카드가 사라진다 (!149 리뷰 1). 재검사는 LLM 없이 규칙으로 답해서(ai-server §2-4) 카드 글은 API 와 상관없다
 	 */
 	private static AiAnswer authzOnly(AiRequest request, AiAnswer answer) {
 		String api = request.authzOnly();
 		String top = request.apis().stream().filter(a -> !api.equals(a.method() + " " + a.path()))
-			.min(Comparator.comparingLong(AiApi::calls).reversed().thenComparing(AiApi::path))
+			.min(ScenarioStore.byCalls(AiApi::calls, a -> a.auth() != null && a.auth().required(), AiApi::method, AiApi::path))
 			.map(a -> a.method() + " " + a.path()).orElse(null);
 		List<Item> restored = request.previous().stream().filter(i -> api.equals(i.api())).map(Item::asReused).toList();
 		List<Item> taken = answer.items().stream()

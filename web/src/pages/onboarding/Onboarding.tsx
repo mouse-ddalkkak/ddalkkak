@@ -14,7 +14,7 @@ import Dialog from '../../components/Dialog'
 import { ApiError } from '../../api/client'
 import { ago } from '../../utils/format'
 import { getHome, type Home } from '../../api/home'
-import { canNext, connectedNormally, needsConfirm, nextHash, prevHash, redirectHome, stepChips, type OnbStep } from './onboardingStep'
+import { canNext, connectedNormally, kitEnv, needsConfirm, nextHash, prevHash, redirectHome, stepChips, type OnbStep } from './onboardingStep'
 import s from './Onboarding.module.css'
 
 // 0-3 온보딩 — 한 화면에 한 단계 ① 스타터킷 추가 → ② 서비스 연결 → ③ AI 키 추가 → ④ 소스코드 연결 (-222)
@@ -152,6 +152,7 @@ export default function Onboarding({ step }: { step: OnbStep }) {
   // 이 화면에서 허용했거나 정상 연결된 서비스 (-222: ② 다음 · 나중에 기준). 해제 확인이 필요하면 연결로 치지 않는다 (-223)
   const connectedName = approved?.name ?? (connectedNormally(home?.service ?? null) ? home!.service!.name : null)
   const ask = !approved && needsConfirm(home?.service ?? null) ? home!.service! : null
+  const env = kitEnv(home?.kitUrl) // 딸깍이 7777이 아니면 ① 안내 (-151)
   const isSpring = fw === 'Spring Boot'
   const chosen = visible.find((r) => r.id === picked) ?? visible[0]
 
@@ -193,7 +194,14 @@ export default function Onboarding({ step }: { step: OnbStep }) {
                   </span>
                 </div>
               ))}
-              <span className={s.caption}>키·설정 파일 필요 없어요. 같은 서버의 딸깍(:7777)을 스스로 찾아요</span>
+              {env ? (
+                <span className={s.caption}>
+                  딸깍이 7777이 아닌 포트로 열려 있어요. 검사할 서비스에 환경 변수{' '}
+                  <code className={s.cmd}>{env}</code>을 넣어 주세요
+                </span>
+              ) : (
+                <span className={s.caption}>키·설정 파일 필요 없어요. 같은 서버의 딸깍(:7777)을 스스로 찾아요</span>
+              )}
               <div className={s.dash} />
               <div className={s.kitHead}>
                 <span className={s.kitTitle}>다른 AI 코딩 도구라면 — 붙여넣기</span>

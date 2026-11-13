@@ -34,6 +34,8 @@ export type Home = {
     runId: string | null
     interruptedAt: { step: 'check' | 'auth' | 'sec' | 'perf' | 'code' | 'report'; name: string } | null
   } | null
+  /** 같은 컴퓨터의 앱이 딸깍을 부를 주소. 7777이 아니면 0-3 ①이 DDALKKAK_URL로 안내 (-151) */
+  kitUrl: string
 }
 
 export const getHome = () => api<Home>('GET', '/api/home')

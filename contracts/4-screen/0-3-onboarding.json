@@ -202,13 +202,22 @@
             "state": "none",
             "runId": null,
             "interruptedAt": null
-          }
+          },
+          "kitUrl": "http://localhost:7777"
         },
         "200 notConnected": {
           "service": null,
           "health": null,
           "lastRun": null,
-          "run": null
+          "run": null,
+          "kitUrl": "http://localhost:7777"
+        },
+        "200 otherPort": {
+          "service": null,
+          "health": null,
+          "lastRun": null,
+          "run": null,
+          "kitUrl": "http://localhost:7778"
         },
         "200 offline": {
           "service": {
@@ -230,7 +239,8 @@
             "state": "none",
             "runId": null,
             "interruptedAt": null
-          }
+          },
+          "kitUrl": "http://localhost:7777"
         },
         "200 disconnectAsk": {
           "service": {
@@ -252,7 +262,8 @@
             "state": "none",
             "runId": null,
             "interruptedAt": null
-          }
+          },
+          "kitUrl": "http://localhost:7777"
         },
         "200 runRunning": {
           "service": {
@@ -270,7 +281,8 @@
             "state": "running",
             "runId": "run_6",
             "interruptedAt": null
-          }
+          },
+          "kitUrl": "http://localhost:7777"
         },
         "200 interrupted": {
           "service": {
@@ -306,7 +318,8 @@
               "step": "perf",
               "name": "2 성능"
             }
-          }
+          },
+          "kitUrl": "http://localhost:7777"
         },
         "200 runDone": {
           "service": {
@@ -339,7 +352,8 @@
             "state": "done",
             "runId": "run_5",
             "interruptedAt": null
-          }
+          },
+          "kitUrl": "http://localhost:7777"
         }
       }
     },

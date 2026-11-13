@@ -16,9 +16,14 @@ def api_name(api: dict) -> str:
     return f"{api['method']} {api['path']}"
 
 
+NO_CALLS_WHY = "호출 기록이 아직 없어 로그인이 필요한 API, 목록 API 순으로 골랐어요"
+
+
 def _ranked(apis: list[dict]) -> list[dict]:
-    """호출 많은 순. 같으면 경로 순서"""
-    return sorted(apis, key=lambda a: (-a.get("calls", 0), a["path"]))
+    """호출 많은 순. 같으면 로그인이 필요한 것 → 목록(경로가 {변수}로 끝나지 않음) → GET → 경로 순서 (-151).
+    스타터킷을 넣으면 앱을 다시 켜서 첫 검사는 호출이 모두 0이다. 그때 경로 순서만 보면 /admin · /auth 같은 이름이 먼저 뽑혀
+    사용자 데이터를 읽는 목록(N+1 · 페이지 없는 목록이 생기는 곳)을 놓친다. Spring ScenarioStore.callsWhy 도 같은 순서다"""
+    return sorted(apis, key=lambda a: (-a.get("calls", 0), not _needs_login(a), a["path"].endswith("}"), a["method"] != "GET", a["path"]))
 
 
 def _item(area: str, tool: str, title: str, why: str, params: dict, **extra) -> dict:
@@ -56,8 +61,8 @@ def _fresh(apis: list[dict], with_account: bool, with_code: bool, authz: list[di
     ranked = _ranked(apis)
     items = []
     for rank, a in enumerate([a for a in ranked if a["method"] == "GET"][:PERF_TOP], start=1):
-        items.append(_item("perf", "k6", f"{api_name(a)} 부하", f"호출이 {a.get('calls', 0):,}번으로 GET 중 {rank}번째로 많아요",
-                           dict(PERF_PARAMS), api=api_name(a)))
+        why = f"호출이 {a['calls']:,}번으로 GET 중 {rank}번째로 많아요" if a.get("calls", 0) else NO_CALLS_WHY
+        items.append(_item("perf", "k6", f"{api_name(a)} 부하", why, dict(PERF_PARAMS), api=api_name(a)))
     if with_account:
         items.append(_item("sec", "ddalkkak", "테스트 계정 만들기", "로그인이 필요한 검사에 쓸 계정이에요", {"count": ACCOUNT_COUNT}))
     items.extend(_authz_item(a) for a in authz or [])

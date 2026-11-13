@@ -4,6 +4,7 @@ import io.ddalkkak.run.RunHistory;
 import java.time.Clock;
 import java.time.OffsetDateTime;
 import java.util.List;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -37,7 +38,8 @@ class ConnectRequestController {
 	record HomeRun(String state, String runId, Interrupted interruptedAt) {
 	}
 
-	record Home(HomeService service, HomeHealth health, RunHistory.LastRun lastRun, HomeRun run) {
+	/** kitUrl: 같은 컴퓨터의 앱이 이 딸깍을 부를 주소. 0-3 ① 이 7777 이 아니면 DDALKKAK_URL 로 안내한다 (-151) */
+	record Home(HomeService service, HomeHealth health, RunHistory.LastRun lastRun, HomeRun run, String kitUrl) {
 	}
 
 	private final ServiceRegistry registry;
@@ -48,11 +50,15 @@ class ConnectRequestController {
 
 	private final Clock clock;
 
-	ConnectRequestController(ServiceRegistry registry, ApiCatalog catalog, RunHistory history, Clock clock) {
+	private final String kitUrl;
+
+	ConnectRequestController(ServiceRegistry registry, ApiCatalog catalog, RunHistory history, Clock clock,
+			@Value("${ddalkkak.host-port}") int hostPort) {
 		this.registry = registry;
 		this.catalog = catalog;
 		this.history = history;
 		this.clock = clock;
+		this.kitUrl = "http://localhost:" + hostPort;
 	}
 
 	@GetMapping("/api/services/requests")
@@ -95,8 +101,8 @@ class ConnectRequestController {
 			ServiceRegistry.Check check = registry.check(id);
 			Disconnect disconnect = new Disconnect(check.failures(), check.needsConfirm(), check.lastCheckedAt());
 			return new Home(new HomeService(s.id(), s.name(), s.host(), s.port(), s.connected(), catalog.latestCount(id), disconnect), health,
-					history.latest(s.id()).orElse(null), homeRun(history.state(s.id())));
-		}).orElse(new Home(null, null, null, null));
+					history.latest(s.id()).orElse(null), homeRun(history.state(s.id())), kitUrl);
+		}).orElse(new Home(null, null, null, null, kitUrl));
 	}
 
 }

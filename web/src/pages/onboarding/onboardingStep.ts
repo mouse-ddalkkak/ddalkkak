@@ -26,6 +26,10 @@ export const prevHash = (step: OnbStep) => `#/onboarding/${Math.max(1, step - 1)
 export const stepChips = (step: OnbStep): Step[] =>
   STEPS.map((label, i) => ({ label, state: i + 1 < step ? 'done' : i + 1 === step ? 'on' : 'todo' }))
 
+/** ① 스타터킷은 http://localhost:7777 을 찾는다. 딸깍이 다른 포트로 열렸으면 앱에 넣을 환경 변수 줄 (-151) */
+export const kitEnv = (kitUrl: string | undefined) =>
+  !kitUrl || kitUrl === 'http://localhost:7777' ? null : `DDALKKAK_URL=${kitUrl}`
+
 /** 연결 점검이 3번 연속 실패해 해제 안내를 띄울 때 (F-CONN-09, -223) */
 export const needsConfirm = (service: Home['service']) => !!service?.disconnect?.needsConfirm
 

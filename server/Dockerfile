@@ -33,7 +33,7 @@ COPY --from=docker:29.8.1-cli /usr/local/bin/docker /usr/local/bin/docker
 WORKDIR /app
 COPY --from=server /server/build/libs/*.jar app.jar
 COPY --from=sample /src/examples/order-api/build/libs/order-api-*[0-9].jar order-api.jar
-# 비밀번호 분실: docker exec ddalkkak ddalkkak reset-password (compose 는 docker compose exec server …)
+# 비밀번호 분실: docker exec ddalkkak ddalkkak reset-password (README Compose 예시는 docker compose exec ddalkkak …, 소스 빌드 compose 는 … exec server …)
 RUN printf '#!/bin/sh\nexec java -jar /app/app.jar "$@"\n' > /usr/local/bin/ddalkkak && chmod +x /usr/local/bin/ddalkkak
 COPY server/start.sh /app/start.sh
 RUN chmod +x /app/start.sh

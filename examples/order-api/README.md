@@ -14,7 +14,7 @@ docker compose up -d        # PostgreSQL (localhost:5433, 딸깍 DB와 별개)
 ./gradlew bootRun           # http://localhost:8080
 ```
 
-- 앱은 컨테이너가 아니라 호스트에서 띄운다. 스타터킷이 `localhost:7777`의 딸깍을 찾기 때문이다
+- 앱은 컨테이너가 아니라 호스트에서 띄운다. 스타터킷이 `localhost:7777`의 딸깍을 찾기 때문이다. 딸깍이 7777이 아닌 포트로 열렸으면(설치 끝 안내 · 딸깍 화면 스타터킷 단계에 나온다) `DDALKKAK_URL=http://localhost:<포트> ./gradlew bootRun`으로 띄운다
 - 켤 때마다 테이블을 새로 만들고 같은 시드를 넣는다 (`ddl-auto: create`). 가입한 계정 · 주문 · 로그인 토큰은 다시 켜면 사라진다
 - 가입하면 그 계정에 주문 320건이 생긴다 (아래 "시드 데이터"). 딸깍은 검사 때 새로 가입한 테스트 계정으로 부르기 때문이다
 
@@ -28,9 +28,21 @@ curl -X POST localhost:8080/api/orders -H 'Authorization: Bearer <token>' -H 'Co
 curl localhost:8080/api/orders -H 'Authorization: Bearer <token>'   # 가입 때 받은 320건 + 방금 1건
 ```
 
-### 검사 준비 전에 부를 API
+### 기본 시나리오가 고르는 API
 
-딸깍의 기본 시나리오(AI 없음)는 호출이 많은 API부터 고르고, 호출 수가 같으면 경로 순으로 고른다 (`ai/plan/defaults.py`). 호출 수 `calls`는 앱이 켜진 뒤부터 센다. 그래서 켜자마자 검사하면 모든 API가 0번이라 `/api/admin/*`이 먼저 뽑힌다. 이러면 k6가 ①을, ZAP이 ②를 검사하지 않는다. 검사 준비(시나리오 만들기) 전에 아래를 한 번 돌린다. ZAP은 메서드와 상관없이 호출 수가 가장 많은 API 하나를 공격하니 `GET /api/orders`가 1위여야 한다.
+딸깍의 기본 시나리오(AI 없음)는 호출이 많은 API부터 고른다. 호출 수가 같으면 로그인이 필요한 API → 목록 API → GET → 경로 순이다 (`ai/plan/defaults.py`). 호출 수 `calls`는 앱이 켜진 뒤부터 센다. 그래서 켜자마자 검사하면 모든 API가 0번이고, 로그인이 필요한 주문 목록이 먼저 뽑힌다.
+
+| 항목 | 도구 | API |
+| --- | --- | --- |
+| perf-1 · perf-2 · perf-3 | k6 | `GET /api/orders` · `GET /api/users/me` · `GET /api/orders/{id}` |
+| sec-1 | 테스트 계정 2개 | — |
+| sec-2 | 권한 점검(남의 데이터 보기) | `GET /api/orders/{id}` — 로그인이 필요한 `{id}` GET을 호출 수와 상관없이 먼저 고른다(공개인 `GET /api/products/{id}`가 아니라) |
+| sec-3 | ZAP | `GET /api/orders` |
+| code-1 | Semgrep | 전체 (코드 연결했을 때) |
+
+①(주문 목록 N+1)은 perf-1이, ②(검색 SQL)는 sec-3 ZAP이, ④(남의 주문 보기)는 sec-2 권한 점검이 잡는다. ⑤(관리자 API)는 호출 수와 상관없이 권한 점검 줄에 덧붙어 잡는다.
+
+검사 전에 앱을 써 두면 많이 불린 API가 먼저 뽑힌다. 예를 들어 아래를 돌리면 perf-2 · perf-3이 `GET /api/products` · `GET /api/products/{id}`로 바뀐다. ZAP은 메서드와 상관없이 호출 수가 가장 많은 API 하나를 공격하니 `GET /api/orders`가 1위여야 ②를 검사한다.
 
 ```bash
 T=$(curl -s -H 'Content-Type: application/json' -d '{"email":"alice@example.com","password":"alice1234"}' \
@@ -39,18 +51,6 @@ for i in $(seq 30); do curl -s -o /dev/null -H "Authorization: Bearer $T" localh
 for i in $(seq 20); do curl -s -o /dev/null localhost:8080/api/products; done
 for i in $(seq 10); do curl -s -o /dev/null localhost:8080/api/products/$i; done
 ```
-
-이렇게 부르면 기본 시나리오가 아래처럼 나온다.
-
-| 항목 | 도구 | API |
-| --- | --- | --- |
-| perf-1 · perf-2 · perf-3 | k6 | `GET /api/orders` · `GET /api/products` · `GET /api/products/{id}` |
-| sec-1 | 테스트 계정 2개 | — |
-| sec-2 | 권한 점검(남의 데이터 보기) | `GET /api/orders/{id}` — 로그인이 필요한 `{id}` GET을 호출 수와 상관없이 먼저 고른다(공개인 `GET /api/products/{id}`가 아니라) |
-| sec-3 | ZAP | `GET /api/orders` |
-| code-1 | Semgrep | 전체 (코드 연결했을 때) |
-
-④(남의 주문 보기)는 sec-2 권한 점검이 잡고, ⑤(관리자 API)는 호출 수와 상관없이 권한 점검 줄에 덧붙어 잡는다.
 
 ## 시드 데이터
 

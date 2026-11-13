@@ -16,6 +16,8 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.Function;
+import java.util.function.Predicate;
+import java.util.function.ToLongFunction;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
@@ -35,8 +37,23 @@ public class ScenarioStore {
 
 	private static final List<String> AREAS = List.of("perf", "sec", "code");
 
+	/** 호출 기록이 없을 때 AI 서버 기본 성능 항목의 이유 (ai/plan/defaults.py NO_CALLS_WHY, -151) */
+	static final String NO_CALLS_WHY = "호출 기록이 아직 없어 로그인이 필요한 API, 목록 API 순으로 골랐어요";
+
 	/** AI 서버 기본 성능 항목의 이유 (ai/plan/defaults.py _fresh). 바꾸면 ai/tests/test_perf.py 의 문구 시험과 같이 */
-	private static final Pattern CALLS_WHY = Pattern.compile("호출이 [0-9,]+번으로 GET 중 [0-9]+번째로 많아요");
+	private static final Pattern CALLS_WHY = Pattern.compile("호출이 [0-9,]+번으로 GET 중 [0-9]+번째로 많아요|" + Pattern.quote(NO_CALLS_WHY));
+
+	/**
+	 * 호출 많은 순. 같으면 로그인이 필요한 것 → 목록(경로가 {변수}로 끝나지 않음) → GET → 경로 순 — ai/plan/defaults.py _ranked 와 같다 (-151).
+	 * 첫 검사는 호출이 모두 0이라 경로 순만 보면 /admin · /auth 가 먼저 뽑혀 사용자 데이터를 읽는 목록을 놓친다
+	 */
+	public static <T> Comparator<T> byCalls(ToLongFunction<T> calls, Predicate<T> login, Function<T, String> method, Function<T, String> path) {
+		return Comparator.<T>comparingLong(calls).reversed()
+			.thenComparing(t -> !login.test(t))
+			.thenComparing(t -> path.apply(t).endsWith("}"))
+			.thenComparing(t -> !"GET".equals(method.apply(t)))
+			.thenComparing(path);
+	}
 
 	/** 약속 ② ScenarioItem 한 장. api · target · excludeReason · source 는 없으면 JSON 에서 뺀다 */
 	@JsonIgnoreProperties(ignoreUnknown = true)
@@ -377,18 +394,19 @@ public class ScenarioStore {
 
 	/**
 	 * API("GET /api/orders") → 이 회차 목록의 호출 수 · GET 순위로 쓴 기본 성능 이유 (-218). 재검사는 지난 scenario_item 줄을 그대로
-	 * 가리켜 why 가 첫 검사 때 호출 수로 남는다. 순위는 ai/plan/defaults.py _ranked 와 같게 호출 많은 순, 같으면 경로 순
+	 * 가리켜 why 가 첫 검사 때 호출 수로 남는다. 순위는 ai/plan/defaults.py _ranked 와 같다(byCalls)
 	 */
 	private Map<String, String> callsWhy(String snapshotId) {
 		if (snapshotId == null) {
 			return Map.of();
 		}
 		List<Endpoint> gets = catalog.endpoints(snapshotId).stream().filter(e -> "GET".equals(e.method()))
-			.sorted(Comparator.comparingLong(Endpoint::calls).reversed().thenComparing(Endpoint::path))
+			.sorted(byCalls(Endpoint::calls, Endpoint::authRequired, Endpoint::method, Endpoint::path))
 			.toList();
 		Map<String, String> out = new HashMap<>();
 		for (int i = 0; i < gets.size(); i++) {
-			out.put(gets.get(i).api(), String.format(Locale.ROOT, "호출이 %,d번으로 GET 중 %d번째로 많아요", gets.get(i).calls(), i + 1));
+			long calls = gets.get(i).calls();
+			out.put(gets.get(i).api(), calls == 0 ? NO_CALLS_WHY : String.format(Locale.ROOT, "호출이 %,d번으로 GET 중 %d번째로 많아요", calls, i + 1));
 		}
 		return out;
 	}
