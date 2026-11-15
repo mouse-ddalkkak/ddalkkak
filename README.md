@@ -91,7 +91,7 @@ docker compose logs ddalkkak | grep -A 3 '관리자 계정'   # 첫 admin 비밀
 ```yaml
 services:
   ddalkkak:
-    image: ghcr.io/mouse-ddalkkak/ddalkkak-server:1.2.1
+    image: ghcr.io/mouse-ddalkkak/ddalkkak-server:1.2.2
     network_mode: host # 같은 서버의 앱 · 검사 도구와 localhost를 같이 쓴다. 포트는 SERVER_PORT
     restart: unless-stopped
     environment:
@@ -112,7 +112,7 @@ services:
       ddalkkak-postgres: { condition: service_healthy }
 
   ddalkkak-ai:
-    image: ghcr.io/mouse-ddalkkak/ddalkkak-ai:1.2.1
+    image: ghcr.io/mouse-ddalkkak/ddalkkak-ai:1.2.2
     network_mode: host
     restart: unless-stopped
     command: ["uvicorn", "main:app", "--host", "127.0.0.1", "--port", "8000"]

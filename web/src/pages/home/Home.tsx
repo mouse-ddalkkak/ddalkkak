@@ -49,7 +49,7 @@ export default function Home() {
   const menu = [
     {
       label: '딸깍 검사',
-      sub: '① 검사 범위 → 시작',
+      sub: '',
       // 코드는 저장한 방식으로 가져온다 — 저장한 방식이 없으면 0-3 ④ (-224). 검사 중이면 알린다 (-214). 연결된 서비스가 없거나, 끊겼는데 다시 허용할 요청이 있으면 0-3 (F-HOME-01 예외, -211)
       go: () => scan(waiting),
     },
@@ -110,6 +110,7 @@ export default function Home() {
           {health && <ClockPill iso={health.serverTime} />}
           <TitleFrame className={s.title}>
             <span className={s.hero}>딸깍</span>
+            <span className={s.tagline}>누구나 클릭 한번으로 검사 완료</span>
             {service && (
               <span className={s.service}>
                 {service.name} · {service.connected ? '연결됨' : '연결 끊김'}

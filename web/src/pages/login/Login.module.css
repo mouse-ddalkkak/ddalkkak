@@ -3,5 +3,6 @@
 .lead{font:var(--type-body);letter-spacing:1px;color:var(--ink-400)}
 .field{display:flex;flex-direction:column;gap:10px}
 .label{font:var(--type-small);letter-spacing:2px;color:var(--ink-400)}
-.hint{font:var(--type-caption);color:var(--ink-400);text-align:center}
-.cmd{padding:2px 8px;background:var(--ink-800);color:var(--cyan-300);font:inherit}
+.forgot{align-self:center}
+.hint{font:var(--type-caption);color:var(--ink-300);overflow-wrap:anywhere}
+.cmd{padding:2px 8px;background:var(--ink-800);color:var(--cyan-300);font:inherit;white-space:nowrap}

@@ -23,12 +23,6 @@ export function dateOnly(iso: string) {
   return p ? `${p.y}-${p.mo}-${p.d}` : iso
 }
 
-/** 14:35 */
-export function timeOnly(iso: string) {
-  const p = parts(iso)
-  return p ? `${p.h}:${p.mi}` : iso
-}
-
 /** 방금 · N분 전 · N시간 전 · N일 전. 미래 시각(가짜 데이터 날짜가 오늘보다 뒤)은 "방금" */
 export function ago(iso: string, now = Date.now()) {
   const sec = Math.max(0, (now - Date.parse(iso)) / 1000)

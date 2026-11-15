@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react'
 import { login } from '../../api/auth'
 import { useApp } from '../../app/AppContext'
 import Button from '../../components/Button'
+import Dialog from '../../components/Dialog'
 import Input from '../../components/Input'
 import s from './Login.module.css'
 
@@ -12,6 +13,7 @@ export default function Login() {
   const [username, setUsername] = useState('admin')
   const [password, setPassword] = useState('')
   const [busy, setBusy] = useState(false)
+  const [forgot, setForgot] = useState(false)
 
   const submit = async (e: FormEvent) => {
     e.preventDefault()
@@ -41,12 +43,21 @@ export default function Login() {
         <Button type="submit" disabled={busy}>
           로그인
         </Button>
-        <span className={s.hint}>
-          비밀번호를 잊었다면 서버에서 <code className={s.cmd}>docker exec ddalkkak ddalkkak reset-password</code>
-          <br />
-          Compose로 띄웠다면 <code className={s.cmd}>docker compose exec ddalkkak ddalkkak reset-password</code>
-        </span>
+        <Button variant="text" size="sm" arrow={false} className={s.forgot} onClick={() => setForgot(true)}>
+          비밀번호를 잊었어요
+        </Button>
       </form>
+      {forgot && (
+        <Dialog title="비밀번호 다시 만들기" onClose={() => setForgot(false)}>
+          <span className={s.hint}>딸깍이 도는 서버 터미널에서 아래 명령을 실행하면 새 비밀번호가 나와요.</span>
+          <span className={s.hint}>
+            docker run으로 설치했다면 <code className={s.cmd}>docker exec ddalkkak ddalkkak reset-password</code>
+          </span>
+          <span className={s.hint}>
+            Compose로 띄웠다면 <code className={s.cmd}>docker compose exec ddalkkak ddalkkak reset-password</code>
+          </span>
+        </Dialog>
+      )}
     </div>
   )
 }
