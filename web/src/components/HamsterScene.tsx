@@ -35,11 +35,12 @@ export default function HamsterScene() {
       if (!btn?.parentElement || !el.offsetWidth) return
       // .root zoom 보정: 화면 px → 이 요소 안 px
       const er = el.getBoundingClientRect(), z = er.width / el.offsetWidth || 1
-      const pr = btn.parentElement.getBoundingClientRect(), sc = pr.width / 460 / z
-      const P = (x: number, y: number): [number, number] => [(pr.left - er.left) / z + x * sc, (pr.top - er.top) / z + y * sc]
+      // 버튼 이미지 830×730 기준 좌표 (-259). 캡 윗면은 y 242~355 — 착지는 앞쪽 325(Pixel Flow 295는 뒤 테두리에 떠 보였다)
+      const pr = btn.parentElement.getBoundingClientRect(), sc = pr.height / 730 / z, kx = pr.width / 830 / z
+      const P = (x: number, y: number): [number, number] => [(pr.left - er.left) / z + x * kx, (pr.top - er.top) / z + y * sc]
       if (still) btn.style.translate = `0 ${pressDepth(SCENE_END)}px` // 눌린 버튼 위에 서도록 재기 전에 누른다
       const off = (btn.getBoundingClientRect().top - pr.top) / z
-      const [capX, capY] = P(230, 150), top = P(60, 150)
+      const [capX, capY] = P(466, 325), top = P(300, 300)
       const footX = top[0] + top[1] * 0.42, L = Math.hypot(top[0] - footX, top[1]), ang = Math.atan2(top[1], top[0] - footX)
       const sx = -L - 40, wd = Math.max(2.4, (footX - sx) / 260), rt = (now - t0) / 1000, t = still ? SCENE_END : sceneTime(rt, wd)
       if (t < lastT) { p = 0; v = 0 }

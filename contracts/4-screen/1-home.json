@@ -1,5 +1,5 @@
 {
-  "screen": "1 홈 (10초마다 · 도구 상태 팝업 · 딸깍 검사는 저장한 코드 연결이 있으면 바로 준비, 없으면 0-3 ④)",
+  "screen": "1 홈 (10초마다 · 도구 상태 팝업 · 새 버전 띠 · 딸깍 검사는 저장한 코드 연결이 있으면 바로 준비, 없으면 0-3 ④)",
   "source": "docs/openapi.yaml ④ 예시에서 뽑음 · 고칠 때는 openapi.yaml을 고치고 python scripts/screen_contracts.py",
   "calls": {
     "GET /api/home": {
@@ -20,7 +20,8 @@
               "failures": 0,
               "needsConfirm": false,
               "lastCheckedAt": "2026-11-07T15:09:50+09:00"
-            }
+            },
+            "starterOutdated": false
           },
           "health": {
             "cpu": 0.23,
@@ -56,6 +57,7 @@
             "runId": null,
             "interruptedAt": null
           },
+          "hostHealth": null,
           "kitUrl": "http://localhost:7777"
         },
         "200 notConnected": {
@@ -63,6 +65,19 @@
           "health": null,
           "lastRun": null,
           "run": null,
+          "hostHealth": {
+            "cpu": 0.08,
+            "mem": {
+              "usedMb": 2150,
+              "totalMb": 7940
+            },
+            "disk": {
+              "usedGb": 41,
+              "totalGb": 233
+            },
+            "uptimeSec": 5400,
+            "serverTime": "2026-11-07T15:10:00+09:00"
+          },
           "kitUrl": "http://localhost:7777"
         },
         "200 otherPort": {
@@ -70,6 +85,19 @@
           "health": null,
           "lastRun": null,
           "run": null,
+          "hostHealth": {
+            "cpu": 0.08,
+            "mem": {
+              "usedMb": 2150,
+              "totalMb": 7940
+            },
+            "disk": {
+              "usedGb": 41,
+              "totalGb": 233
+            },
+            "uptimeSec": 5400,
+            "serverTime": "2026-11-07T15:10:00+09:00"
+          },
           "kitUrl": "http://localhost:7778"
         },
         "200 offline": {
@@ -84,7 +112,8 @@
               "failures": 1,
               "needsConfirm": false,
               "lastCheckedAt": "2026-11-07T15:09:50+09:00"
-            }
+            },
+            "starterOutdated": false
           },
           "health": null,
           "lastRun": null,
@@ -93,6 +122,7 @@
             "runId": null,
             "interruptedAt": null
           },
+          "hostHealth": null,
           "kitUrl": "http://localhost:7777"
         },
         "200 disconnectAsk": {
@@ -107,7 +137,8 @@
               "failures": 3,
               "needsConfirm": true,
               "lastCheckedAt": "2026-11-07T15:10:50+09:00"
-            }
+            },
+            "starterOutdated": false
           },
           "health": null,
           "lastRun": null,
@@ -116,6 +147,7 @@
             "runId": null,
             "interruptedAt": null
           },
+          "hostHealth": null,
           "kitUrl": "http://localhost:7777"
         },
         "200 runRunning": {
@@ -126,7 +158,8 @@
             "port": 8080,
             "connected": true,
             "apiCount": 14,
-            "disconnect": null
+            "disconnect": null,
+            "starterOutdated": false
           },
           "health": null,
           "lastRun": null,
@@ -135,6 +168,7 @@
             "runId": "run_6",
             "interruptedAt": null
           },
+          "hostHealth": null,
           "kitUrl": "http://localhost:7777"
         },
         "200 interrupted": {
@@ -145,7 +179,8 @@
             "port": 8080,
             "connected": true,
             "apiCount": 14,
-            "disconnect": null
+            "disconnect": null,
+            "starterOutdated": false
           },
           "health": null,
           "lastRun": {
@@ -172,6 +207,32 @@
               "name": "2 성능"
             }
           },
+          "hostHealth": null,
+          "kitUrl": "http://localhost:7777"
+        },
+        "200 oldKit": {
+          "service": {
+            "id": "svc_1",
+            "name": "order-api",
+            "host": "localhost",
+            "port": 8080,
+            "connected": true,
+            "apiCount": null,
+            "disconnect": {
+              "failures": 0,
+              "needsConfirm": false,
+              "lastCheckedAt": "2026-11-07T15:09:50+09:00"
+            },
+            "starterOutdated": true
+          },
+          "health": null,
+          "lastRun": null,
+          "run": {
+            "state": "none",
+            "runId": null,
+            "interruptedAt": null
+          },
+          "hostHealth": null,
           "kitUrl": "http://localhost:7777"
         },
         "200 runDone": {
@@ -182,7 +243,8 @@
             "port": 8080,
             "connected": true,
             "apiCount": 14,
-            "disconnect": null
+            "disconnect": null,
+            "starterOutdated": false
           },
           "health": null,
           "lastRun": {
@@ -206,6 +268,7 @@
             "runId": "run_5",
             "interruptedAt": null
           },
+          "hostHealth": null,
           "kitUrl": "http://localhost:7777"
         }
       }
@@ -227,7 +290,23 @@
             "pid": 41822,
             "javaVersion": "17",
             "buildTool": "Gradle",
-            "requestedAt": "2026-10-31T10:02:11+09:00"
+            "requestedAt": "2026-10-31T10:02:11+09:00",
+            "starterOutdated": false
+          }
+        ],
+        "200 oldKit": [
+          {
+            "id": "req_7f2a",
+            "appName": "order-api",
+            "framework": "Spring Boot",
+            "frameworkVersion": "3.2.5",
+            "host": "localhost",
+            "port": 8080,
+            "pid": 41822,
+            "javaVersion": "17",
+            "buildTool": "Gradle",
+            "requestedAt": "2026-10-31T10:02:11+09:00",
+            "starterOutdated": true
           }
         ]
       }
@@ -453,6 +532,57 @@
         "409": {
           "code": "RUN_IN_PROGRESS",
           "message": "이미 검사 중이에요"
+        }
+      }
+    },
+    "GET /api/update": {
+      "summary": "1 홈 새 버전 띠 — 지금 버전 · 새 버전 · 버튼으로 업데이트할 수 있는지",
+      "owner": [
+        "B2"
+      ],
+      "responses": {
+        "200 newVersion": {
+          "current": "1.2.1",
+          "latest": "1.2.2",
+          "canUpdate": true
+        },
+        "200 compose": {
+          "current": "1.2.1",
+          "latest": "1.2.2",
+          "canUpdate": false
+        },
+        "200 upToDate": {
+          "current": "1.2.2",
+          "latest": null,
+          "canUpdate": true
+        },
+        "200 source": {
+          "current": null,
+          "latest": null,
+          "canUpdate": false
+        }
+      }
+    },
+    "POST /api/update": {
+      "summary": "1 홈 업데이트 버튼 — 새 버전 설치기를 띄운다",
+      "owner": [
+        "B2"
+      ],
+      "responses": {
+        "202": {
+          "version": "1.2.2"
+        },
+        "409 unavailable": {
+          "code": "UPDATE_UNAVAILABLE",
+          "message": "업데이트할 새 버전이 없어요"
+        },
+        "409 running": {
+          "code": "RUN_IN_PROGRESS",
+          "message": "이미 검사 중이에요"
+        },
+        "502": {
+          "code": "UPDATE_FAILED",
+          "message": "업데이트를 시작하지 못했어요 · 설치 명령을 다시 실행해 주세요"
         }
       }
     }

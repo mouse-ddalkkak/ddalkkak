@@ -89,10 +89,13 @@ def _grade_perf(item):
             cause += f" · 측정 중 CPU가 최대 {_pct(cpu)}였어요 — 같은 PC에서 다른 작업이 돌았는지 측정 환경을 확인하세요"
         else:
             cause += " — 원인은 코드·쿼리 분석으로 좁혀야 해요"
+        # 느린 응답에 DB 정황이 같이 있으면 결과 목록(제목 · 기술 줄)에서도 보이게 한다 — 확인된 것은 기준 초과고 반복 호출은 정황이다 (-255)
+        n1 = slow and reasons
         return _verdict(
             "danger",
-            title="응답이 통과 기준을 넘었어요" if slow else "요청 실패가 통과 기준을 넘었어요",
-            tech=f"k6 측정 기준 초과 · {api}",
+            title="응답이 통과 기준을 넘었어요 · DB 반복 호출 정황" if n1
+            else "응답이 통과 기준을 넘었어요" if slow else "요청 실패가 통과 기준을 넘었어요",
+            tech=f"N+1 의심 · {api}" if n1 else f"k6 측정 기준 초과 · {api}",
             impact="기준을 넘는 응답은 사용자 경험과 안정성에 바로 영향을 줘요",
             asIs=_vl(f"{p95:g}ms", "느린 요청 p95") if slow else _vl(_pct(err), "오류율"),
             toBe=_vl(f"{fail_p95:g}ms 이내", "느린 요청 p95") if slow else _vl(f"{_pct(fail_err)} 이하", "오류율"),
@@ -210,6 +213,9 @@ def _grade_sec(item):
         return verdicts
     if item.get("status") == "partial":
         return "중단됨"  # 돈 범위에서 위험·주의가 없었을 뿐, 완료된 검사의 통과가 아니다
+    if (item.get("metrics") or {}).get("unattackedQueries"):
+        # ZAP이 테스트 값이 거절된 선택 쿼리를 빼고 돌아 그 칸은 공격하지 않았다 — 통과로 세지 않는다 (-262, scan.md §4)
+        return "요청 구성 오류"
     return _verdict("pass", passedName=f"{tool} · {api}" if api else tool,
                     passedValue=f"low만 {len(findings)}건" if findings else "발견 없음")
 
@@ -230,11 +236,6 @@ def _code_where(f):
     return f"{file}:{line}" if file and line else file or (f"{line}번 줄" if line else "")
 
 
-def _first_line(msg):
-    """도구 원문 메시지의 비어 있지 않은 첫 줄 (없으면 "")"""
-    return next((line.strip() for line in str(msg or "").splitlines() if line.strip()), "")
-
-
 def _grade_code(item):
     findings = item.get("findings") or []
     # 규칙마다 묶은 뒤, 구체적인 종류(표 규칙 · 코드 속 비밀값)는 대표 위치가 같으면 한 건으로 합친다 — p/secrets와 p/java가 같은
@@ -244,8 +245,6 @@ def _grade_code(item):
         kind = _code_kind(top)[0]
         key = ("rule", str(top.get("ruleId", ""))) if kind in BROAD_CODE_KINDS else (kind, _code_where(top))
         merged.setdefault(key, (top, [], level))[1].extend(group)
-    # 같은 위치에서 메시지 앞 60자가 겹치는 넓은 이름 문제는 첫 줄 전체로 가른다 (!147 리뷰 4-1)
-    clipped = Counter((_code_where(top), _first_line(top.get("name"))[:60]) for top, _, _ in merged.values())
     verdicts = []
     for top, group, level in merged.values():
         loc = top.get("location") or {}
@@ -254,11 +253,7 @@ def _grade_code(item):
         rid = top.get("ruleId", "")
         known = rule(rid)
         kind, generic_title = _code_kind(top)
-        msg = top.get("name")  # 도구 원문 메시지 — 원인에 쓰고, 넓은 이름이면 제목 끝에 첫 줄. 규칙 ID는 사용자에게 보이지 않는다 (-233)
-        first = _first_line(msg)
-        if kind in BROAD_CODE_KINDS and first:
-            cut = first if clipped[(where, first[:60])] > 1 else first[:60] + ("…" if len(first) > 60 else "")
-            generic_title = f"{generic_title} · {cut}"
+        msg = top.get("name")  # 도구 원문 메시지 — 원인에만 쓴다. 제목은 한국어만 (-255). 규칙 ID는 사용자에게 보이지 않는다 (-233)
         # 파일 · 줄이 근거다. 하나라도 없으면 등급은 그대로 두고 의심으로 낮춘다 (F-RPT-06 근거 부족)
         located = file and line
         verdicts.append(_verdict(
@@ -277,6 +272,14 @@ def _grade_code(item):
             fix=known["fix"] if known else {"recommended": "해당 위치 코드를 규칙 안내대로 수정", "alternative": None},
             passCriteria="재검사에서 error·warning 0건",
         ))
+    # 넓은 이름은 규칙마다 따로 세니 같은 위치에 둘이 걸리면 제목 · tech가 똑같다 — 제목 끝 번호로 가른다 (!147 리뷰 4-1 · -255)
+    same = Counter((v["title"], v["where"]) for v in verdicts)
+    seen = Counter()
+    for v in verdicts:
+        key = (v["title"], v["where"])
+        if same[key] > 1:
+            seen[key] += 1
+            v["title"] += f" ({seen[key]})"
     if verdicts:
         return verdicts
     if item.get("status") == "partial":
@@ -326,7 +329,7 @@ def build_report(raw):
                 row = {"area": area, "name": pass_name(p.get("ruleId"), p["name"]), "value": p["value"]}
                 if row not in tool_passed[area]:
                     tool_passed[area].append(row)
-        if isinstance(verdict, str):  # 미검사 사유 (중단됨 · 미측정)
+        if isinstance(verdict, str):  # 미검사 사유 (중단됨 · 미측정 · 요청 구성 오류)
             skipped[area].append((item, verdict))
             continue
         # 보안 · 코드는 한 항목에서 ruleId마다 판정이 나온다 (-150) — 점수도 문제 수로 센다

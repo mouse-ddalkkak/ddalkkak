@@ -186,6 +186,12 @@ class LoginProbe {
 				&& response.headers().firstValue("Location").orElse("").toLowerCase(Locale.ROOT).contains("login");
 	}
 
+	/** 그 요청 하나의 상태 코드 (ZAP 전 요청 구성 확인, -262). 못 닿으면 null */
+	Integer status(String api, int port, List<ApiCatalog.Param> params, ScanLogin.Credential credential) {
+		HttpResponse<Void> response = send(api, port, params, credential);
+		return response == null ? null : response.statusCode();
+	}
+
 	/** 본문 없이 한 번. 못 닿으면 null */
 	private HttpResponse<Void> send(String api, int port, List<ApiCatalog.Param> params, ScanLogin.Credential credential) {
 		try {

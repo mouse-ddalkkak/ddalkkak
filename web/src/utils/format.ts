@@ -32,6 +32,9 @@ export function ago(iso: string, now = Date.now()) {
   return `${Math.floor(sec / 86400)}일 전`
 }
 
+/** 6 결과 소요 — 서버는 내림한 분을 줘서 1분이 안 걸린 · 끊긴 회차는 0 → "1분 미만" (-256) */
+export const durationText = (min: number) => (min < 1 ? '1분 미만' : `${min}분`)
+
 /** 가동 3일 14시간 */
 export function uptime(sec: number) {
   const d = Math.floor(sec / 86400)

@@ -891,6 +891,10 @@
           "code": "TARGET_LOGIN_FAILED",
           "message": "로그인하지 못했어요 · 아이디 · 비밀번호를 확인하거나 토큰 · 쿠키를 넣어 주세요"
         },
+        "400 signupFailed": {
+          "code": "TARGET_SIGNUP_FAILED",
+          "message": "테스트 계정을 만들지 못했어요 · 가입 규칙을 확인하거나 내 계정 · 토큰 · 쿠키를 넣어 주세요 · 앱 응답 400: 닉네임은 필수입니다"
+        },
         "404": {
           "code": "NOT_FOUND",
           "message": "찾을 수 없어요"

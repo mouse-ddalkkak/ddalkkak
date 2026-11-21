@@ -17,9 +17,6 @@ import s from './TopBar.module.css'
 const BEFORE_LOGIN: (ScreenId | null)[] = [null, '0-0', '0-1', '0-2']
 const CHECK: (ScreenId | null)[] = ['3', '4', '5']
 const HISTORY: (ScreenId | null)[] = ['6', '7', '8']
-const SPARKS: [string, string, number][] = [
-  ['3%', '22%', 12], ['14%', '64%', 10], ['34%', '18%', 10], ['52%', '70%', 12], ['71%', '24%', 10], ['91%', '58%', 12],
-]
 
 export default function TopBar({ screen }: { screen: ScreenId | null }) {
   const { ai, user, clearSession, setHome } = useApp()
@@ -59,9 +56,7 @@ export default function TopBar({ screen }: { screen: ScreenId | null }) {
 
   return (
     <header className={s.header}>
-      {SPARKS.map(([l, t, z]) => (
-        <span key={l} className={s.spark} style={{ left: l, top: t, width: z, height: z }} />
-      ))}
+      <div className={s.edge} aria-hidden />
       <div className={s.inner}>
         <a href={authed ? '#/' : undefined} className={s.logo}>
           <img src={logo} alt="딸깍 로고" className={s.logoImg} />

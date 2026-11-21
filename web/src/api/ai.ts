@@ -11,7 +11,9 @@ export type AiSettings = {
 export type AiInput = { provider: AiProvider; baseUrl: string | null; key: string; model: string }
 
 export const getAiSettings = () => api<AiSettings>('GET', '/api/ai-settings')
-export const putAiSettings = (input: AiInput) => api<AiSettings>('PUT', '/api/ai-settings', { body: input })
+export const putAiSettings = (input: AiInput) => api<AiSettings>('PUT', '/api/ai-settings', { body: input, inline: true })
+/** 연결 해제 — 저장한 설정을 지운다. 응답은 늘 AI 없음 (-254) */
+export const deleteAiSettings = () => api<AiSettings>('DELETE', '/api/ai-settings')
 /** ok: false 는 오류가 아니라 응답 값 — 화면이 message를 보여 준다 */
 export const checkAi = (input: AiInput) =>
-  api<{ ok: boolean; shown: string | null; message: string }>('POST', '/api/ai-settings/check', { body: input })
+  api<{ ok: boolean; shown: string | null; message: string }>('POST', '/api/ai-settings/check', { body: input, inline: true })

@@ -8,6 +8,7 @@ from common.llm import call_json
 from plan.fallback import reason_of
 
 from .numbers import _NUM, _key, allowed_numbers, log, unknown_numbers
+from .rules import BROAD_CODE_KINDS
 
 TIMEOUT_SEC = 30  # openapi "30초를 넘기면 기본 틀" · Spring은 40초 기다린다
 OUTPUT_SCHEMA = {"type": "object", "properties": {"text": {"type": "string"}}, "required": ["text"]}
@@ -70,10 +71,17 @@ def _single(framework, issue, code, with_code=True):
     return "\n".join(lines)
 
 
+def _broad_code(issue):
+    """표에 없어 넓은 일반 이름을 받은 코드 문제 — 제목이 한국어 일반 이름뿐이라(-255) 무슨 규칙인지는 원인(도구 메시지)에만 있다"""
+    return issue.get("area") == "code" and str(issue.get("tech") or "").split(" · ")[0] in BROAD_CODE_KINDS
+
+
 def _bundle(framework, issues):
     rows = [f"{_num(n)} [{AREA_KO.get(i['area'], i['area'])} · {LEVEL_KO.get(i['level'], i['level'])}] "
             f"{i['title']} — {i['where']} · {i['asIs']['label']} {i['asIs']['value']} → {i['toBe']['value']}"
             + (f" · 정황: {DB_QUERIES} {_db_queries(i)}(N+1 의심)" if _db_queries(i) else "")
+            # 원인에는 Semgrep 메시지가 통째로 들어 여러 줄일 수 있다 — 번호 줄이 갈라지지 않게 편다 (!162 리뷰 2-1)
+            + (f" · 원인: {' '.join(i['cause'].split())}" if _broad_code(i) and i.get("cause") else "")
             for n, i in enumerate(issues)]
     order = " → ".join(_num(n) for n in range(len(issues)))
     return (f"{framework}에서 아래 {len(issues)}개 문제를 고쳐 주세요.\n\n" + "\n".join(rows)

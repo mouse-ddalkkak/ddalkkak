@@ -86,6 +86,9 @@ class ScanProgress {
 
 		String skipReason;
 
+		/** running 이 된 때 — 도는 동안 진행률 · 남은 시간을 지난 시간만큼 옮긴다 (-253) */
+		java.time.Instant startedAt;
+
 		ItemState(String key, String title, double weight, double minutes) {
 			this.key = key;
 			this.title = title;
@@ -183,6 +186,25 @@ class ScanProgress {
 
 	private final Map<String, RunState> runs = new ConcurrentHashMap<>();
 
+	private final java.time.Clock clock;
+
+	ScanProgress(java.time.Clock clock) {
+		this.clock = clock;
+	}
+
+	/**
+	 * 도는 회차에 지금 진행률을 다시 보낸다 — 이벤트가 단계 · 시나리오가 바뀔 때만 나가면 성능 시나리오가 몇 분 도는 동안 막대가 멈춰 있다 (-253).
+	 * 멈춰서 고름을 기다리는 회차는 보내지 않는다
+	 */
+	@org.springframework.scheduling.annotation.Scheduled(fixedDelayString = "${ddalkkak.scan.progress-interval-ms:10000}")
+	void tick() {
+		for (RunState run : runs.values()) {
+			if ("running".equals(run.status) && run.paused == null && run.item != null) {
+				progress(run);
+			}
+		}
+	}
+
 	/** 검사 시작 때 범위의 시나리오로 단계 트리를 만든다. 계정 만들기(ddalkkak count)는 테스트 계정 단계, 나머지 보안은 1 보안 */
 	RunState open(String runId, List<ScenarioStore.Item> scope) {
 		RunState run = new RunState(runId);
@@ -240,9 +262,14 @@ class ScanProgress {
 	}
 
 	synchronized void itemRunning(RunState run, String step, String key) {
+		// 지금 항목은 그 단계에서 처음 돌기 시작해 아직 도는 시나리오 — 화면(watchRun)과 같은 기준. 코드 품질은 한꺼번에 돈다 (!166 리뷰 1-3)
+		if (!step.equals(run.step) || run.item == null || !"running".equals(find(run, step, run.item).state)) {
+			run.item = key;
+		}
 		run.step = step;
-		run.item = key;
-		find(run, step, key).state = "running";
+		ItemState item = find(run, step, key);
+		item.state = "running";
+		item.startedAt = clock.instant();
 		progress(run);
 	}
 
@@ -352,7 +379,13 @@ class ScanProgress {
 		send(run, "progress", event(run));
 	}
 
-	/** pct = 끝 · 건너뜀은 다, 진행 중은 반, 대기는 0 (연결 확인 · 테스트 계정 · 결과 정리는 각 1). leftMin = 남은 시나리오의 분, 올림 */
+	/** 도는 시나리오가 예상 시간을 넘겨도 채우는 몫의 끝 */
+	static final double RUNNING_MAX = 0.95;
+
+	/**
+	 * pct = 끝 · 건너뜀은 다, 도는 시나리오는 지난 시간 / 예상 시간(최대 {@link #RUNNING_MAX}), 대기는 0 (연결 확인 · 테스트 계정 · 결과 정리는
+	 * 각 1, 도는 중이면 반). leftMin = 기다리는 시나리오의 분 + 도는 시나리오의 남은 분, 올림
+	 */
 	synchronized ProgressEvent event(RunState run) {
 		double total = 0;
 		double got = 0;
@@ -368,8 +401,15 @@ class ScanProgress {
 			}
 			for (ItemState i : s.items) {
 				total += i.weight;
+				if (i.state.equals("running")) {
+					// 도는 시나리오는 지난 시간만큼 — 예상보다 오래 돌아도 다 채우지 않는다 (-253)
+					double ran = i.startedAt == null ? 0 : java.time.Duration.between(i.startedAt, clock.instant()).toMillis() / 60_000.0;
+					got += i.weight * Math.min(RUNNING_MAX, ran / i.minutes);
+					left += Math.max(0, i.minutes - ran);
+					continue;
+				}
 				got += i.weight * share(i.state);
-				if (i.state.equals("waiting") || i.state.equals("running")) {
+				if (i.state.equals("waiting")) {
 					left += i.minutes;
 				}
 			}

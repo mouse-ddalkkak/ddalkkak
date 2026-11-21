@@ -11,9 +11,13 @@ export type ConnectRequest = {
   javaVersion: string | null
   buildTool: string | null
   requestedAt: string
+  /** 스타터킷이 1.1.0 전 출시본 — 허용하면 409 STARTER_OUTDATED라 연결 버튼 대신 올리라는 안내 (-221) */
+  starterOutdated: boolean
 }
 
-export const getConnectRequests = () => api<ConnectRequest[]>('GET', '/api/services/requests')
+// again: 0-3 ② "다시 찾기" — "아니에요"로 무시한 요청도 앱이 살아 있으면 다시 목록에 (-251). 5초 새로고침은 again 없이
+export const getConnectRequests = (again = false) =>
+  api<ConnectRequest[]>('GET', again ? '/api/services/requests?again=true' : '/api/services/requests')
 export const approveRequest = (id: string) =>
   api<{ serviceId: string; name: string }>('POST', `/api/services/requests/${encodeURIComponent(id)}/approve`, { handle: ['ALREADY_CONNECTED'] })
 /** 해제 안내 · 409 모달에서 사용자가 확인했을 때만 (F-CONN-09). 검사 중이면 409 RUN_IN_PROGRESS → 화면이 그 자리에서 알린다 */

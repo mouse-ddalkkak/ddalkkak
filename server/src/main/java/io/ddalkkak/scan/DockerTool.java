@@ -14,6 +14,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
+import java.util.function.Supplier;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
@@ -90,6 +92,9 @@ public class DockerTool {
 	/** docker image ls 를 기다리는 시간 */
 	static final Duration IMAGE_LS_TIMEOUT = Duration.ofSeconds(30);
 
+	/** 이 스레드에서 이미지를 받기 직전에 부를 안내 (onPull). 시험이 DockerTool 을 가짜로 바꿔도 걸리게 static */
+	private static final ThreadLocal<Consumer<String>> ON_PULL = new ThreadLocal<>();
+
 	/** 서버 컨테이너 안 /root/.ddalkkak 이 붙은 폴더의 호스트 쪽 경로. 비어 있으면 서버가 호스트에서 바로 돈다 */
 	private final String dataHostDir;
 
@@ -131,6 +136,7 @@ public class DockerTool {
 			return new Result(ls.exitCode(), ls.lines(), Failure.RUN);
 		}
 		if (ls.lines().stream().allMatch(String::isBlank)) {
+			pulling(image);
 			Result pull = exec(List.of("pull", image), PULL_TIMEOUT);
 			if (pull.exitCode() != 0) {
 				return new Result(pull.exitCode(), pull.lines(), Failure.PULL);
@@ -182,6 +188,28 @@ public class DockerTool {
 		}
 		reader.join();
 		return new Result(p.exitValue(), lines.snapshot());
+	}
+
+	/**
+	 * body 를 도는 동안 이 스레드가 이미지를 받기 시작하면 onPull(이미지)을 부른다 — 첫 검사에서 받는 몇 분 동안 진행 화면이 멈춘 것처럼
+	 * 보이지 않게 ScanRunner 가 "처음 받아요"를 남긴다 (-256). 실제로 받을 때만 불려서 도구를 띄우기 전에 건너뛰는 시나리오에는 안 남는다 (!157 리뷰 2-1)
+	 */
+	static <T> T onPull(Consumer<String> onPull, Supplier<T> body) {
+		ON_PULL.set(onPull);
+		try {
+			return body.get();
+		}
+		finally {
+			ON_PULL.remove();
+		}
+	}
+
+	/** 받기 직전 — 걸린 안내가 있으면 부른다 */
+	static void pulling(String image) {
+		Consumer<String> on = ON_PULL.get();
+		if (on != null) {
+			on.accept(image);
+		}
 	}
 
 	/**

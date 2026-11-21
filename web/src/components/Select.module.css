@@ -1,0 +1,13 @@
+/* Input.module.css와 같은 틀 + 그 아래 붙는 픽셀 목록 (-257) */
+.wrap{display:flex;flex-direction:column;min-width:0}
+.field{display:flex;align-items:center;gap:12px;padding:10px 12px;border:4px solid var(--ink-50);background:var(--ink-900)}
+.field:focus-within,.field[data-open]{border-color:var(--cyan-300)}
+.prompt{font:var(--type-body);color:var(--red-500)}
+.input{appearance:none;flex:1;min-width:0;margin:0;border:0;outline:0;padding:0;background:transparent;color:var(--white);font:var(--type-caption);letter-spacing:1px;text-align:left;caret-color:var(--cyan-300);cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+input.input{cursor:text}
+.arrow{appearance:none;margin:0;padding:0 2px;border:0;background:transparent;color:var(--ink-400);font:var(--type-caption);cursor:pointer}
+.arrow:hover{color:var(--white)}
+.list{display:flex;flex-direction:column;max-height:208px;overflow-y:auto;border:4px solid var(--cyan-300);border-top:0;background:var(--ink-900)}
+.option{appearance:none;margin:0;padding:8px 12px;border:0;background:transparent;color:var(--ink-300);font:var(--type-caption);letter-spacing:1px;text-align:left;overflow-wrap:anywhere;cursor:pointer}
+.option[aria-selected=true]{color:var(--cyan-300)}
+.option:hover,.option:focus-visible{outline:0;background:var(--ink-50);color:var(--ink-900)}

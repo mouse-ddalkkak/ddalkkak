@@ -60,6 +60,14 @@ public class ZapRunner {
 	static final Map<String, Strength> RANGES = Map.of("default", new Strength("Low", "Medium", 5), "wide",
 			new Strength("Medium", "Medium", 10), "full", new Strength("High", "Low", 20));
 
+	/** 요청을 잘못 만든 것으로 보는 확인 요청 상태 — k6 의 {@link K6Script#BAD_REQUEST_METRIC} 와 같다 (-262) */
+	static final java.util.Set<Integer> BAD_STATUS = java.util.Set.of(400, 404, 422);
+
+	private static final java.util.regex.Pattern ADDED = java.util.regex.Pattern.compile("Job openapi added (\\d+) URLs");
+
+	private static final java.util.regex.Pattern ACTIVE_DONE = java.util.regex.Pattern
+		.compile("Job activeScan finished, time taken: (\\S+)");
+
 	/** 공격 요청 사이 쉬는 시간 — 고객 서버를 보호한다 */
 	static final int DELAY_MS = 20;
 
@@ -82,8 +90,11 @@ public class ZapRunner {
 
 	private final TargetApp target;
 
+	private final PathValues paths;
+
 	ZapRunner(DockerTool docker, ServiceRegistry services, ApiCatalog catalog, RunLookup runs, RawResultWriter writer,
-			LoginProbe probe, JsonMapper json, TargetApp target) {
+			LoginProbe probe, JsonMapper json, TargetApp target, PathValues paths) {
+		this.paths = paths;
 		this.target = target;
 		this.docker = docker;
 		this.services = services;
@@ -109,14 +120,70 @@ public class ZapRunner {
 				return writer.skip(row, "대상 없음");
 			}
 			ApiCatalog.Endpoint endpoint = endpoint(run, item.api());
-			Optional<LoginProbe.Use> use = probe.allowed(item.api(), port, endpoint == null ? List.of() : endpoint.params(), login);
+			List<ApiCatalog.Param> params = endpoint == null ? List.of() : endpoint.params();
+			// 경로 변수는 목록 API 에서 찾은 실제 값으로 (-262). 확인 요청 · OpenAPI example 이 같은 값을 쓴다
+			ScanLogin.Credential before = login.credential();
+			PathValues.Filled filled = paths.fill(runId, item.api(), port, before);
+			Optional<LoginProbe.Use> use = probe.allowed(filled.api(), port, params, login);
 			if (use.isEmpty()) {
 				writer.append(row, List.of("== " + item.key() + " " + item.api() + " · 로그인 필요 → " + K6Runner.NO_ACCOUNT));
 				return writer.skip(row, K6Runner.NO_ACCOUNT);
 			}
+			filled = paths.refill(filled, runId, port, before, use.get().credential());
+			// 요청을 제대로 못 만들었으면(400 · 404 · 422) ZAP 을 돌려도 패시브 규칙만 통과로 쌓인다 — k6 처럼 요청 구성 오류 (-262, scan.md §4).
+			// GET 만 본다: 확인 요청은 본문 없이 나가 @RequestBody 필수 API 는 늘 400 이고, 쓰기 API 를 한 번 더 부르면 실제 데이터가 바뀐다 (!160 리뷰 1-1 · 1-2)
+			// 쿼리는 ZAP 기본 요청과 같게 선택 쿼리도 테스트 값으로 싣는다 — ZAP 은 OpenAPI 의 쿼리를 필수 여부와 상관없이 다 붙인다 (!160 리뷰 3-1)
+			List<ApiCatalog.Param> asZap = params.stream()
+				.map(p -> "query".equals(p.in()) && !p.required() ? new ApiCatalog.Param(p.name(), p.in(), p.type(), true) : p)
+				.toList();
+			Integer status = "GET".equalsIgnoreCase(K6Script.method(filled.api())) ? probe.status(filled.api(), port, asZap, use.get().credential())
+					: null;
+			Set<String> dropped = new java.util.LinkedHashSet<>();
+			String unattacked = null;
+			if (status != null && BAD_STATUS.contains(status) && !asZap.equals(params)) {
+				// 선택 쿼리의 테스트 값이 거절됐다(seedit ?period=a → 400). 빼고 부르면 앱이 기본값을 쓰니 그게 되면 거절한 칸만 빼고 ZAP 을 돌린다 (!160 리뷰 5-1 · 6-1)
+				Integer bare = probe.status(filled.api(), port, params, use.get().credential());
+				if (bare != null && !BAD_STATUS.contains(bare)) {
+					// 선택 쿼리를 하나씩 필수 쿼리에 더해 본다. 위 확인처럼 400 · 404 · 422 만 거절 — 5xx · 401 · 못 닿음은 그 칸 탓인지 몰라 남겨 공격한다
+					for (ApiCatalog.Param p : params) {
+						if ("query".equals(p.in()) && !p.required()) {
+							List<ApiCatalog.Param> one = params.stream()
+								.map(x -> x == p ? new ApiCatalog.Param(p.name(), p.in(), p.type(), true) : x)
+								.toList();
+							Integer alone = probe.status(filled.api(), port, one, use.get().credential());
+							if (alone != null && BAD_STATUS.contains(alone)) {
+								dropped.add(p.name());
+							}
+						}
+					}
+					// 뺄 칸이 없으면 ZAP 이 실을 쿼리는 처음 확인과 같으니 그 400 그대로 — 요청 구성 오류. 뺐으면 남긴 칸을 같이 실어 한 번 더 본다
+					// (칸마다는 받는데 같이 실으면 거절하는 앱, !160 리뷰 7-1)
+					if (!dropped.isEmpty()) {
+						List<ApiCatalog.Param> kept = params.stream()
+							.map(p -> "query".equals(p.in()) && !p.required() && !dropped.contains(p.name())
+									? new ApiCatalog.Param(p.name(), p.in(), p.type(), true) : p)
+							.toList();
+						Integer rejected = status;
+						status = kept.equals(params) ? bare : probe.status(filled.api(), port, kept, use.get().credential());
+						// 공격하지 않은 칸이 있으니 패시브 PASS 를 통과로 싣지 않는다 — 실으면 그 칸의 주입을 놓치고도 통과로 보인다 (!160 리뷰 6-1).
+						// 그 수(metrics.unattackedQueries)를 보고 채점이 위험·주의가 없으면 통과 대신 미검사(요청 구성 오류)로 센다
+						unattacked = "[zap] 선택 쿼리 " + String.join(" · ", dropped) + " 는 테스트 값이 거절돼 공격하지 않음 (실으면 " + rejected
+								+ ") · 위험·주의가 없으면 미검사로 셈";
+					}
+				}
+			}
+			if (status != null && BAD_STATUS.contains(status)) {
+				List<String> lines = new ArrayList<>();
+				lines.add("== " + item.key() + " " + item.api() + " · " + status + " → " + K6Runner.BAD_REQUEST);
+				if (filled.note() != null) {
+					lines.add(filled.note());
+				}
+				writer.append(row, lines);
+				return writer.skip(row, K6Runner.BAD_REQUEST);
+			}
 			Path out = writer.outDir(runId);
 			Strength strength = RANGES.getOrDefault(range(item), RANGES.get("default"));
-			Files.writeString(out.resolve("openapi.json"), openapi(item.api(), port, endpoint), UTF_8);
+			Files.writeString(out.resolve("openapi.json"), openapi(item.api(), port, endpoint, filled.values(), dropped), UTF_8);
 			plan = out.resolve("plan.yaml");
 			Files.writeString(plan, plan(target.origin(port), use.get().credential(), strength), UTF_8);
 			Path report = out.resolve("zap.json");
@@ -150,6 +217,12 @@ public class ZapRunner {
 			boolean pullFailed = r.failure() == DockerTool.Failure.PULL;
 			lines.add("== " + item.key() + " " + item.api() + " · exit=" + r.exitCode()
 					+ (pullFailed ? " · 받기 실패 → " + K6Runner.PULL_FAILED : ""));
+			if (filled.note() != null) {
+				lines.add(filled.note());
+			}
+			if (unattacked != null) {
+				lines.add(unattacked);
+			}
 			// 원본 로그에도 토큰은 남기지 않는다
 			r.lines().forEach(line -> lines.add(login.mask(line)));
 			writer.append(row, lines);
@@ -161,8 +234,19 @@ public class ZapRunner {
 				return writer.skip(row, K6Runner.TOOL_ERROR);
 			}
 			try {
-				parse(row, item.api(), json.readTree(Files.readString(report, UTF_8)).required("site"));
-				row.passed = json.writeValueAsString(passed(lines, row.findings));
+				parse(row, item.api(), json.readTree(Files.readString(report, UTF_8)).required("site"), dropped.size());
+				row.passed = unattacked == null ? json.writeValueAsString(passed(lines, row.findings)) : null;
+				String active = active(r.lines(), strength);
+				List<String> evidence = new ArrayList<>(json.readValue(row.evidence, new tools.jackson.core.type.TypeReference<List<String>>() {
+				}));
+				int at = Math.min(1, evidence.size());
+				if (active != null) {
+					evidence.add(at++, active);
+				}
+				if (unattacked != null) {
+					evidence.add(at, unattacked);
+				}
+				row.evidence = json.writeValueAsString(evidence);
 				// alert 근거에 요청 쿠키 · 헤더가 실려 올 수 있다
 				row.findings = login.mask(row.findings);
 				row.evidence = login.mask(row.evidence);
@@ -199,8 +283,44 @@ public class ZapRunner {
 		return catalog.endpoints(run.snapshotId()).stream().filter(e -> api.strip().equalsIgnoreCase(e.api())).findFirst().orElse(null);
 	}
 
+	/**
+	 * 액티브 스캔이 실제로 무엇을 돌았는지 근거 한 줄 (-262). ZAP 2.16.1 은 규칙별 액티브 결과를 남기지 않아, AF 로그의 "Job openapi added N
+	 * URLs" · "Job activeScan finished, time taken: T" 와 계획의 강도 · 기준을 쓴다. 주소가 0개면 공격할 것이 없었다. 두 줄이 없으면 null
+	 */
+	static String active(List<String> lines, Strength strength) {
+		Integer urls = null;
+		String took = null;
+		for (String line : lines) {
+			java.util.regex.Matcher added = ADDED.matcher(line);
+			if (added.find()) {
+				urls = Integer.valueOf(added.group(1));
+			}
+			java.util.regex.Matcher finished = ACTIVE_DONE.matcher(line);
+			if (finished.find()) {
+				took = finished.group(1);
+			}
+		}
+		if (urls == null) {
+			return null;
+		}
+		if (urls == 0) {
+			return "[zap] 액티브 스캔 대상 없음 (주소 0개)";
+		}
+		return "[zap] 액티브 스캔 · 주소 " + urls + "개" + (took == null ? "" : " · " + took) + " · 강도 " + strength.strength() + " · 기준 "
+				+ strength.threshold();
+	}
+
 	/** 그 api 하나만 담은 OpenAPI 3 — query · path 받는 칸까지 (ZAP 이 공격할 칸) */
 	String openapi(String api, int port, ApiCatalog.Endpoint endpoint) {
+		return openapi(api, port, endpoint, Map.of(), Set.of());
+	}
+
+	/**
+	 * @param values 경로 변수 → 찾은 값 ({@link PathValues}). 경로 변수는 그 값(없으면 {@link K6Script#PATH_VALUE}), 쿼리는 타입별 테스트
+	 * 값을 example 로 싣는다 — 값이 없으면 ZAP 이 변수 이름을 넣어 400 만 받는다 (-262)
+	 * @param dropped 싣지 않을 선택 쿼리 이름 — 테스트 값을 실으면 거절되고 빼면 되는 칸 (!160 리뷰 5-1 · 6-1)
+	 */
+	String openapi(String api, int port, ApiCatalog.Endpoint endpoint, Map<String, String> values, Set<String> dropped) {
 		String method = K6Script.method(api.strip()).toLowerCase(Locale.ROOT);
 		String path = api.strip().substring(api.strip().indexOf(' ') + 1);
 		// 경로는 servers.url 뒤에 붙는다 — "@evil.host/x" 는 호스트 자리를 바꾸고, "//evil.host/x" 는 ZAP 이 다른 호스트로 풀 수 있다
@@ -210,12 +330,19 @@ public class ZapRunner {
 		List<Map<String, Object>> params = new ArrayList<>();
 		if (endpoint != null && endpoint.params() != null) {
 			for (ApiCatalog.Param p : endpoint.params()) {
-				if ("query".equalsIgnoreCase(p.in()) || "path".equalsIgnoreCase(p.in())) {
+				if (("query".equalsIgnoreCase(p.in()) && (p.required() || !dropped.contains(p.name()))) || "path".equalsIgnoreCase(p.in())) {
 					Map<String, Object> param = new LinkedHashMap<>();
 					param.put("name", p.name());
 					param.put("in", p.in().toLowerCase(Locale.ROOT));
 					param.put("required", "path".equalsIgnoreCase(p.in()) || p.required());
 					param.put("schema", Map.of("type", p.type() == null ? "string" : p.type()));
+					if ("path".equalsIgnoreCase(p.in())) {
+						param.put("example", values.getOrDefault(p.name(), K6Script.PATH_VALUE));
+					}
+					else {
+						// 선택 쿼리도 싣는다 — example 이 없으면 ZAP 이 이름을 값으로 넣어(seedit ?period=period) 400 만 받는다 (!160 리뷰 3-1)
+						param.put("example", K6Script.testValue(p.type()));
+					}
 					params.add(param);
 				}
 			}
@@ -269,8 +396,11 @@ public class ZapRunner {
 		return y.toString();
 	}
 
-	/** zap.json site[].alerts[] → 약속 ③ findings · metrics · evidence. 정보성(riskcode 0) alert 는 뺀다 */
-	private void parse(RawResultRow row, String api, JsonNode sites) {
+	/**
+	 * zap.json site[].alerts[] → 약속 ③ findings · metrics · evidence. 정보성(riskcode 0) alert 는 뺀다
+	 * @param unattacked 테스트 값이 거절돼 OpenAPI 에서 뺀 선택 쿼리 수 — 0 이면 metrics 에 싣지 않는다 (없는 값은 넣지 않음, 약속 ③)
+	 */
+	private void parse(RawResultRow row, String api, JsonNode sites, int unattacked) {
 		if (!sites.isArray()) {
 			throw new IllegalArgumentException("site 가 배열이 아님");
 		}
@@ -305,6 +435,9 @@ public class ZapRunner {
 		metrics.put("alertsHigh", counts.get("high"));
 		metrics.put("alertsMedium", counts.get("medium"));
 		metrics.put("alertsLow", counts.get("low"));
+		if (unattacked > 0) {
+			metrics.put("unattackedQueries", unattacked);
+		}
 		row.findings = json.writeValueAsString(findings);
 		row.metrics = json.writeValueAsString(metrics);
 		row.evidence = json.writeValueAsString(evidence);

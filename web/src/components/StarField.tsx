@@ -42,7 +42,7 @@ export default function StarField({ kind }: { kind: 'landing' | 'sparkles' }) {
       </div>
     )
   return (
-    <div className={s.field} aria-hidden>
+    <div className={`${s.field} ${s.sparkles}`} aria-hidden>
       {SPARKLES.map(([left, top, size, delay], i) => (
         <span
           key={i}

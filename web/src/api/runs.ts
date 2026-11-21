@@ -49,8 +49,9 @@ export type Scope = {
   estimate: { scenarioCount: number; requests: number; durationMin: number; load: string; advice: string }
 }
 export const getScope = (runId: string) => api<Scope>('GET', `/api/runs/prepare/${encodeURIComponent(runId)}/scope`)
-export const putScope = (runId: string, scope: Scope, added: Added[] = []) =>
-  api<Scope>('PUT', `/api/runs/prepare/${encodeURIComponent(runId)}/scope`, { body: scopeBody(scope, added) })
+/** inline = 4 ✎ · "+ 추가" 팝업 저장 — 오류를 팝업 안에 (하단 바는 팝업 뒤에 가린다, -257) */
+export const putScope = (runId: string, scope: Scope, added: Added[] = [], inline = false) =>
+  api<Scope>('PUT', `/api/runs/prepare/${encodeURIComponent(runId)}/scope`, { body: scopeBody(scope, added), inline })
 /** 4 "+ 추가" 대상 후보 — 이번 회차 API 목록 전부 (카드 없는 API 포함, 성능 GET 거르기는 화면이) (-179) */
 export const getPrepareApis = (runId: string) =>
   api<{ apis: { api: string; change: 'new' | 'changed' | null }[] }>('GET', `/api/runs/prepare/${encodeURIComponent(runId)}/apis`)
@@ -69,11 +70,11 @@ export type AuthInput =
   | { mode: 'token'; token: string }
   | { mode: 'cookie'; cookie: string }
 export const getAuth = (runId: string) => api<AuthSetting>('GET', `/api/runs/prepare/${encodeURIComponent(runId)}/auth`)
-/** 로그인 실패 · 잘못 넣음 · 앱 꺼짐은 팝업 안에 문구로 (하단 바에 띄우지 않는다) */
+/** 로그인 실패 · 가입 거절 · 잘못 넣음 · 앱 꺼짐은 팝업 안에 문구로 (하단 바에 띄우지 않는다) */
 export const putAuth = (runId: string, body: AuthInput) =>
   api<AuthSetting>('PUT', `/api/runs/prepare/${encodeURIComponent(runId)}/auth`, {
     body,
-    handle: ['NO_LOGIN_API', 'TARGET_LOGIN_FAILED', 'BAD_REQUEST', 'SERVICE_OFFLINE'],
+    handle: ['NO_LOGIN_API', 'TARGET_LOGIN_FAILED', 'TARGET_SIGNUP_FAILED', 'BAD_REQUEST', 'SERVICE_OFFLINE'],
   })
 /** 409 RUN_IN_PROGRESS는 화면이 팝업으로 (-214) */
 export const startRun = (runId: string) => api<{ runId: string }>('POST', '/api/runs', { body: { runId }, handle: ['RUN_IN_PROGRESS'] })
@@ -179,4 +180,4 @@ export type History = { total: number; runs: HistoryRun[]; trend: Record<Area, (
 export const getHistory = () => api<History>('GET', '/api/runs')
 /** 8 · 6 이름 ✎ — 그 회차의 이름만 바뀐다. 응답은 저장한 이름(앞뒤 공백을 뗀 값) */
 export const renameRun = (runId: string, projectName: string) =>
-  api<{ runId: string; projectName: string }>('PATCH', `/api/runs/${encodeURIComponent(runId)}`, { body: { projectName } })
+  api<{ runId: string; projectName: string }>('PATCH', `/api/runs/${encodeURIComponent(runId)}`, { body: { projectName }, inline: true })

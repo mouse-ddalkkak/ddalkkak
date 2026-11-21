@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { getPrepare, skipToDefaultScope, type Prepare as PrepareData, type PrepareRow } from '../../api/runs'
 import { ApiError } from '../../api/client'
 import { usePolling } from '../../hooks/usePolling'
+import { useFitZoom } from '../../hooks/useFitZoom'
 import { useApp } from '../../app/AppContext'
 import PageTitle from '../../components/PageTitle'
 import Panel from '../../components/Panel'
@@ -9,6 +10,8 @@ import Gauge from '../../components/Gauge'
 import Led from '../../components/Led'
 import Button from '../../components/Button'
 import { HamsterSprite } from '../../components/HamsterWalk'
+import RunBusyDialog from '../../components/RunBusyDialog'
+import { useScan } from '../../hooks/useScan'
 import { prepareNext } from './prepareNext'
 import { diffLines } from './apiDiff'
 import s from './Prepare.module.css'
@@ -20,8 +23,13 @@ const STATE_TEXT: Record<PrepareRow['state'], string> = { done: '완료', runnin
 
 export default function Prepare({ runId }: { runId: string }) {
   const { ai } = useApp()
+  // 창이 낮으면 스크롤 대신 줄여 맞춘다 (-259)
+  const page = useRef<HTMLDivElement>(null)
+  useFitZoom(page, 1)
   const [data, setData] = useState<PrepareData>()
   const [skipping, setSkipping] = useState(false)
+  // 준비 실패(앱 꺼짐 · API 0개 …) — 다시 시도는 새 준비 회차를 만든다(홈 딸깍 검사와 같다), 홈으로 (-253)
+  const { scan, busy, closeBusy } = useScan()
   // 응답이 늦게(최대 140초) 와도 화면을 떠났거나 회차가 바뀌었으면 버린다
   const current = useRef<string | null>(runId)
   useEffect(() => {
@@ -69,12 +77,14 @@ export default function Prepare({ runId }: { runId: string }) {
 
   // 제목: AI 모드는 응답의 aiMode가 정하고, 응답 전에는 헤더 AI 표시를 따른다
   const llm = data ? data.aiMode === 'llm' : !!ai?.connected
+  // AI가 연결돼 있지 않으면 "분석"이 AI가 하는 것처럼 보이지 않게 기본 범위로 간다고 알린다 (-254). 응답 전(null)에는 말하지 않는다
+  const noAi = ai !== null && !ai.connected
   return (
-    <div className={s.wrap}>
+    <div ref={page} className={s.wrap}>
       <PageTitle
         center
         title={llm ? 'AI가 딸깍을 준비 중입니다' : '딸깍을 준비 중입니다'}
-        sub={llm ? '코드를 읽고 이 서비스에 맞는 검사 시나리오를 짜고 있어요' : '코드를 읽고 기본 검사 범위를 정리하고 있어요'}
+        sub={llm ? '코드를 읽고 이 서비스에 맞는 검사 시나리오를 짜고 있어요' : noAi ? 'AI 연결 없이 기본 검사 범위로 준비해요 · 코드를 읽고 범위를 정리하고 있어요' : '코드를 읽고 기본 검사 범위를 정리하고 있어요'}
       >
         <HamsterSprite height={168} />
       </PageTitle>
@@ -126,7 +136,16 @@ export default function Prepare({ runId }: { runId: string }) {
             AI 추천 없이 기본 범위로 바로 가기
           </Button>
         )}
+        {data?.error && (
+          <>
+            <Button variant="outline" arrow={false} onClick={() => (location.hash = '#/')}>
+              홈으로
+            </Button>
+            <Button onClick={() => scan()}>다시 시도</Button>
+          </>
+        )}
       </div>
+      {busy && <RunBusyDialog onClose={closeBusy} />}
     </div>
   )
 }

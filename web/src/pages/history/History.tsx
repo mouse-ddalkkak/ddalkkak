@@ -6,7 +6,7 @@ import ProjectName from '../../components/ProjectName'
 import Button from '../../components/Button'
 import RunBusyDialog from '../../components/RunBusyDialog'
 import { useScan } from '../../hooks/useScan'
-import { AREAS, AREA_NAME, scoreColor, scoreText } from '../../utils/score'
+import { AREAS, AREA_NAME, scoreChange, scoreColor, scoreText } from '../../utils/score'
 import { dateOnly, shortDateTime } from '../../utils/format'
 import s from './History.module.css'
 
@@ -16,65 +16,71 @@ export default function History() {
   const { data, setData } = useLoad(getHistory, [])
   const { scan, busy, closeBusy } = useScan()
   if (!data) return null
+  // 새로 설치해 검사 0번 — 빈 카드 · "재검사" 대신 빈 상태와 "검사 시작" (F-HIST-01, -256)
+  const empty = data.total === 0
 
   return (
     <div className={s.wrap}>
       <PageTitle
         title="검사 이력"
-        sub={`검사 ${data.total}번`}
+        sub={empty ? undefined : `검사 ${data.total}번`}
         right={
           <Button onClick={() => scan()} className={s.rescan}>
-            재검사
+            {empty ? '검사 시작' : '재검사'}
           </Button>
         }
       />
-      <section className={s.trend}>
-        {AREAS.map((a) => {
-          const vals = data.trend[a]
-          const last = vals[vals.length - 1] ?? null
-          const prev = [...vals.slice(0, -1)].reverse().find((v) => v != null) ?? null
-          const delta = last == null ? null : prev == null ? '첫 측정' : last - prev
-          return (
-            <div key={a} className={s.card}>
-              <div className={s.cardHead}>
-                <span className={s.last} style={{ color: scoreColor(last) }}>
-                  {scoreText(last)}
-                </span>
-                <div className={s.cardText}>
-                  <span className={s.name}>{AREA_NAME[a]}</span>
-                  {delta !== null && (
-                    <span
-                      className={s.delta}
-                      style={{ color: typeof delta === 'string' ? 'var(--ink-400)' : delta >= 0 ? 'var(--green-400)' : 'var(--coral-400)' }}
-                    >
-                      {typeof delta === 'string' ? delta : delta >= 0 ? `+${delta}` : `−${-delta}`}
-                    </span>
-                  )}
+      {empty ? (
+        <p className={s.empty}>아직 검사가 없어요</p>
+      ) : (
+        <section className={s.trend}>
+          {AREAS.map((a) => {
+            const vals = data.trend[a]
+            const last = vals[vals.length - 1] ?? null
+            // 증감은 막대(최근 4번)가 아니라 회차 목록에서 마지막으로 잰 회차와 비교 (-256)
+            const delta = scoreChange(data.runs, a)
+            return (
+              <div key={a} className={s.card}>
+                <div className={s.cardHead}>
+                  <span className={s.last} style={{ color: scoreColor(last) }}>
+                    {scoreText(last)}
+                  </span>
+                  <div className={s.cardText}>
+                    <span className={s.name}>{AREA_NAME[a]}</span>
+                    {delta !== null && (
+                      <span
+                        className={s.delta}
+                        style={{ color: typeof delta === 'string' ? 'var(--ink-400)' : delta >= 0 ? 'var(--green-400)' : 'var(--coral-400)' }}
+                      >
+                        {typeof delta === 'string' ? delta : delta >= 0 ? `+${delta}` : `−${-delta}`}
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <div className={s.bars} style={{ gridTemplateColumns: `repeat(${vals.length},minmax(0,1fr))` }}>
+                  <span className={s.goal} />
+                  {vals.map((v, i) => {
+                    const latest = i === vals.length - 1
+                    return (
+                      <div key={i} className={s.barCol}>
+                        <span className={s.barLabel} data-latest={latest ? '' : undefined}>
+                          {scoreText(v)}
+                        </span>
+                        {v == null ? (
+                          <span className={s.barNone} />
+                        ) : (
+                          <span className={s.bar} style={{ height: `${v}%`, background: latest ? scoreColor(v) : 'var(--ink-600)' }} />
+                        )}
+                        {data.trend.at[i] && <span className={s.barDate}>{dateOnly(data.trend.at[i]).slice(5)}</span>}
+                      </div>
+                    )
+                  })}
                 </div>
               </div>
-              <div className={s.bars} style={{ gridTemplateColumns: `repeat(${vals.length},minmax(0,1fr))` }}>
-                <span className={s.goal} />
-                {vals.map((v, i) => {
-                  const latest = i === vals.length - 1
-                  return (
-                    <div key={i} className={s.barCol}>
-                      <span className={s.barLabel} data-latest={latest ? '' : undefined}>
-                        {scoreText(v)}
-                      </span>
-                      {v == null ? (
-                        <span className={s.barNone} />
-                      ) : (
-                        <span className={s.bar} style={{ height: `${v}%`, background: latest ? scoreColor(v) : 'var(--ink-600)' }} />
-                      )}
-                      {data.trend.at[i] && <span className={s.barDate}>{dateOnly(data.trend.at[i]).slice(5)}</span>}
-                    </div>
-                  )
-                })}
-              </div>
-            </div>
-          )
-        })}
-      </section>
+            )
+          })}
+        </section>
+      )}
       <div className={s.runs}>
         {data.runs.map((r) => (
           // 이름을 고치는 중(포커스가 폼 안)이면 넘어가지 않는다 — 입력칸에서 끌어 고르다 폼 밖에서 놓으면 click이 행에 온다

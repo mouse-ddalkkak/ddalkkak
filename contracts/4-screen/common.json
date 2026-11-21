@@ -69,6 +69,21 @@
         }
       }
     },
+    "DELETE /api/ai-settings": {
+      "summary": "AI 연결 해제 — 저장한 설정을 지운다 (AI 없음으로)",
+      "owner": [
+        "B2"
+      ],
+      "responses": {
+        "200": {
+          "provider": null,
+          "baseUrl": null,
+          "model": null,
+          "keyMasked": null,
+          "connected": false
+        }
+      }
+    },
     "POST /api/ai-settings/check": {
       "summary": "AI 연결 확인 → /ai/check",
       "owner": [

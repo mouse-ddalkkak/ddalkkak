@@ -83,6 +83,9 @@ public class DdalkkakAgent implements ApplicationListener<ApplicationReadyEvent>
 	// 아래는 ddalkkak-agent 스레드에서만 읽고 쓴다 (serviceId · token · warned 는 측정 스레드도 send 로 읽는다)
 	private String requestId;
 
+	// 무시됐다는 로그를 한 번만 남기려고 (생존 신호마다 찍지 않게)
+	private boolean ignored;
+
 	private volatile String serviceId;
 
 	private volatile String token;
@@ -211,9 +214,15 @@ public class DdalkkakAgent implements ApplicationListener<ApplicationReadyEvent>
 		}
 		String status = (String) answer.get("status");
 		if ("ignored".equals(status)) {
-			log.info("딸깍: 연결 요청이 무시됐어요 · 앱이 다시 켜질 때까지 보내지 않아요");
+			// 같은 요청으로 계속 보낸다 — 0-3 ② "다시 찾기"가 이 요청을 되살리면 허용할 수 있다 (-251)
+			if (!ignored) {
+				log.info("딸깍: 연결 요청이 무시됐어요 · 딸깍 화면에서 \"다시 찾기\"를 누르면 다시 떠요");
+				ignored = true;
+			}
+			schedule(heartbeatInterval);
 			return;
 		}
+		ignored = false;
 		if (answer.get("serviceId") != null) {
 			serviceId = (String) answer.get("serviceId");
 		}

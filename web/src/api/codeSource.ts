@@ -43,11 +43,11 @@ export const getCodeSource = () => api<{ last: CodeSource | null }>('GET', '/api
 /** 409 SERVICE_OFFLINE(연결된 서비스 없음)은 화면이 후보 자리에 안내한다 */
 export const getCodeArtifacts = () => api<CodeArtifacts>('GET', '/api/code-source/artifacts', { handle: ['SERVICE_OFFLINE'] })
 export const startCodeSource = (input: CodeSourceInput) =>
-  api<{ jobId: string | null }>('POST', '/api/code-source', { body: input })
+  api<{ jobId: string | null }>('POST', '/api/code-source', { body: input, inline: true })
 export const getCodeJob = (jobId: string) => api<CodeJob>('GET', `/api/code-source/jobs/${encodeURIComponent(jobId)}`)
 /** ZIP 업로드 (multipart file) — 200MB는 화면이 올리기 전에 본다 (codeInput.zipProblem) */
 export const uploadCodeZip = (file: File) => {
   const form = new FormData()
   form.append('file', file)
-  return api<{ jobId: string }>('POST', '/api/code-source/zip', { form })
+  return api<{ jobId: string }>('POST', '/api/code-source/zip', { form, inline: true })
 }

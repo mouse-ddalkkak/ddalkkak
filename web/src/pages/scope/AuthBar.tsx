@@ -14,7 +14,7 @@ import s from './AuthBar.module.css'
 // 분석 결과를 보고 [확인하고 로그인]을 누를 때 처음으로 검사할 앱에 로그인 요청이 간다(PUT …/auth). 그 전에는 가입 · 로그인 요청이 없다
 
 const CHOICES: { value: AuthChoice; label: string; sub: string }[] = [
-  { value: 'create', label: '딸깍이 계정 만들기', sub: 'ddalkkak-test-xxxx 로 가입' },
+  { value: 'create', label: '딸깍이 테스트 계정 만들기', sub: 'ddalkkak-test-xxxx 로 가입' },
   { value: 'account', label: '내 계정', sub: '아이디 · 비밀번호' },
   { value: 'token', label: '토큰', sub: 'Authorization: Bearer' },
   { value: 'cookie', label: '쿠키', sub: '이름=값; 이름=값' },

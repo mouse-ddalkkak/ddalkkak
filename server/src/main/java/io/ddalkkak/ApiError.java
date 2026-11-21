@@ -4,7 +4,12 @@ package io.ddalkkak;
 public record ApiError(String code, String message) {
 
 	public ApiError(ErrorCode code) {
-		this(code.name(), code.message);
+		this(code, null);
+	}
+
+	/** detail 이 있으면 고정 문구 뒤에 " · detail" 을 붙인다 */
+	public ApiError(ErrorCode code, String detail) {
+		this(code.name(), detail == null ? code.message : code.message + " · " + detail);
 	}
 
 }

@@ -3,6 +3,7 @@ import { renameRun } from '../api/runs'
 import { useApp } from '../app/AppContext'
 import { PROJECT_NAME_MAX, cleanProjectName } from '../utils/projectName'
 import Input from './Input'
+import { ApiError } from '../api/client'
 import s from './ProjectName.module.css'
 
 /** 8 · 6 프로젝트 이름 + ✎ — 눌러서 그 자리에서 고친다 (F-HIST-05). 입력칸에서 ENTER · 확인 버튼은 폼 제출이고, 취소는 버튼으로만 한다
@@ -11,11 +12,13 @@ export default function ProjectName({ runId, name, onSaved, className }: { runId
   const { showMessage } = useApp()
   const [draft, setDraft] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+  // 거절 문구 — 1.8초 알림 대신 폼 옆에 남긴다. 다시 고치면 지운다 (-257)
+  const [error, setError] = useState<string | null>(null)
 
   const save = async () => {
     if (draft === null) return
     const next = cleanProjectName(draft)
-    if (!next) return showMessage(`이름은 1~${PROJECT_NAME_MAX}자로 적어 주세요`)
+    if (!next) return setError(`이름은 1~${PROJECT_NAME_MAX}자로 적어 주세요`)
     if (next === name) return setDraft(null)
     setSaving(true)
     try {
@@ -23,8 +26,9 @@ export default function ProjectName({ runId, name, onSaved, className }: { runId
       onSaved(r.projectName)
       setDraft(null)
       showMessage('이름을 바꿨어요')
-    } catch {
-      // 래퍼가 문구를 띄웠다 — 입력은 그대로 두고 다시 고칠 수 있게 한다
+    } catch (e) {
+      // 입력은 그대로 두고 다시 고칠 수 있게 한다. 서버 꺼짐(code 없음)은 하단 바가 띄웠다
+      if (e instanceof ApiError && e.code) setError(e.message)
     }
     setSaving(false)
   }
@@ -40,6 +44,7 @@ export default function ProjectName({ runId, name, onSaved, className }: { runId
           onClick={(e) => {
             e.stopPropagation()
             setDraft(name)
+            setError(null) // 지난번에 고치다 남은 거절 문구는 새로 열 때 지운다 (!164 리뷰)
           }}
         >
           ✎
@@ -58,13 +63,24 @@ export default function ProjectName({ runId, name, onSaved, className }: { runId
       }}
     >
       {/* maxLength를 두지 않는다 — 붙여 넣은 긴 이름을 말없이 잘라 저장하지 않고 cleanProjectName이 거절 문구를 띄우게 */}
-      <Input autoFocus value={draft} disabled={saving} onChange={(e) => setDraft(e.target.value)} aria-label="프로젝트 이름" />
+      <Input autoFocus value={draft} disabled={saving} onChange={(e) => {
+          setDraft(e.target.value)
+          setError(null)
+        }} aria-label="프로젝트 이름" />
       <button type="submit" className={s.ok} disabled={saving}>
         확인
       </button>
-      <button type="button" className={s.cancel} disabled={saving} onClick={() => setDraft(null)}>
+      <button type="button" className={s.cancel} disabled={saving} onClick={() => {
+        setDraft(null)
+        setError(null)
+      }}>
         취소
       </button>
+      {error && (
+        <span className={s.error} role="alert">
+          {error}
+        </span>
+      )}
     </form>
   )
 }

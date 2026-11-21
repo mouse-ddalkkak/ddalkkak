@@ -225,7 +225,8 @@ class TargetAuth {
 		if (ACCOUNT.equals(row.mode)) {
 			JsonNode account = json.readTree(secret);
 			ApiCatalog.Endpoint api = endpoint(apis, row.loginApi);
-			relogin = () -> login(row, port, api, account, log);
+			ApiCatalog.Endpoint signup = endpoint(apis, row.signupApi);
+			relogin = () -> login(row, port, api, signup, account, log);
 			first = relogin.get();
 		}
 		else {
@@ -285,8 +286,15 @@ class TargetAuth {
 	private TestAccounts.Found firstLogin(int port, ApiCatalog.Endpoint signup, ApiCatalog.Endpoint login, String username,
 			String password) {
 		try {
-			if (signup != null && accounts.signup(port, signup, username, password) / 100 != 2) {
-				throw new ApiException(ErrorCode.TARGET_LOGIN_FAILED);
+			if (signup != null) {
+				TestAccounts.Joined joined = accounts.signup(port, signup, username, password);
+				if (joined.said() != null) {
+					// 가입 4xx — 앱이 왜 거절했는지 화면 4 팝업에 보인다 (가린 문구, -261)
+					throw new ApiException(ErrorCode.TARGET_SIGNUP_FAILED, "앱 응답 " + joined.status() + ": " + joined.said());
+				}
+				if (joined.status() / 100 != 2) {
+					throw new ApiException(ErrorCode.TARGET_LOGIN_FAILED);
+				}
 			}
 			TestAccounts.Found found = accounts.login(port, login, username, password).found();
 			if (found == null) {
@@ -309,11 +317,23 @@ class TargetAuth {
 
 	/**
 	 * 검사 중 계정 로그인. 아이디 · 비밀번호가 거절되면({@link TestAccounts.Login#refused}) 만료로 표시하고 null. 앱이 5xx · 429 처럼 로그인을
-	 * 받지 못했거나 연결이 안 되면 저장한 계정은 두고 null (!141 리뷰 1-2)
+	 * 받지 못했거나 연결이 안 되면 저장한 계정은 두고 null (!141 리뷰 1-2). 딸깍이 만든 계정({@link TestAccounts#newUsername})이 거절되면
+	 * 앱이 다시 떠 데이터가 지워진 것(샘플 앱 ddl-auto create 등) — 같은 값으로 다시 가입하고 로그인한다. 사용자가 넣은 계정은 가입시키지 않는다 (-253)
 	 */
-	private ScanLogin.Credential login(TargetAuthRow row, int port, ApiCatalog.Endpoint api, JsonNode account, Consumer<String> log) {
+	private ScanLogin.Credential login(TargetAuthRow row, int port, ApiCatalog.Endpoint api, ApiCatalog.Endpoint signup, JsonNode account,
+			Consumer<String> log) {
 		try {
-			TestAccounts.Login in = accounts.login(port, api, account.path("username").asString(), account.path("password").asString());
+			String username = account.path("username").asString();
+			String password = account.path("password").asString();
+			TestAccounts.Login in = accounts.login(port, api, username, password);
+			if (in.refused() && signup != null && username.startsWith(TestAccounts.PREFIX)) {
+				TestAccounts.Joined joined = accounts.signup(port, signup, username, password);
+				log.accept("login " + row.hint + " · " + in.status() + " → 딸깍이 만든 계정이 앱에서 사라져 같은 값으로 다시 가입 · " + joined.status()
+						+ (joined.said() == null ? "" : " · 앱: " + joined.said()));
+				if (joined.status() / 100 == 2) {
+					in = accounts.login(port, api, username, password);
+				}
+			}
 			if (in.found() != null) {
 				log.accept("login " + row.hint + " · " + in.found().at() + " ok");
 				return in.found().credential();

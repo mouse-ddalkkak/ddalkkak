@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useLayoutEffect, useRef, useState } from 'react'
 import { approveRequest, disconnectService, getConnectRequests, ignoreRequest, type ConnectRequest } from '../../api/services'
 import { usePolling } from '../../hooks/usePolling'
 import { useApp } from '../../app/AppContext'
@@ -13,8 +13,10 @@ import CodeConnect from '../code-source/CodeSource'
 import Dialog from '../../components/Dialog'
 import { ApiError } from '../../api/client'
 import { ago } from '../../utils/format'
+import { KIT_DEP } from '../../utils/kit'
 import { getHome, type Home } from '../../api/home'
-import { canNext, connectedNormally, kitEnv, needsConfirm, nextHash, prevHash, redirectHome, stepChips, type OnbStep } from './onboardingStep'
+import { canNext, connectedNormally, detectedText, homeLabel, kitEnv, needsConfirm, nextHash, prevHash, redirectHome, showRequests, stepChips, type OnbStep } from './onboardingStep'
+import { enter, shouldEnter } from '../../utils/screenFx'
 import s from './Onboarding.module.css'
 
 // 0-3 온보딩 — 한 화면에 한 단계 ① 스타터킷 추가 → ② 서비스 연결 → ③ AI 키 추가 → ④ 소스코드 연결 (-222)
@@ -40,7 +42,7 @@ const SPRING = {
   prompt: [
     '이 프로젝트에 딸깍 스타터킷(com.github.mouse-ddalkkak:ddalkkak, 저장소 https://jitpack.io)을 설치해 주세요.',
     '1) 먼저 프로젝트의 빌드 도구(Gradle/Maven)와 설정 파일(build.gradle / build.gradle.kts / pom.xml),\nJava 버전, Spring Boot 버전을 확인해 주세요.',
-    "2) 저장소 줄 maven { url 'https://jitpack.io' } 과 의존성 com.github.mouse-ddalkkak:ddalkkak:v1.2.2 을 추가해 주세요.\nbuild.gradle.kts면 Kotlin 문법(maven(\"https://jitpack.io\") · implementation(\"…\")), pom.xml이면 <repository> · <dependency>로 넣어 주세요.\n지원: Spring Boot 3.2 이상 · Java 17 이상 · Spring MVC 앱만 (아니면 설치하지 말고 알려 주세요)\n코드가 실행 중인 버전과 같은지 비교하려면 커밋 정보 플러그인도 넣어 주세요: Gradle id 'com.gorylenko.gradle-git-properties' version '4.0.1' · Maven io.github.git-commit-id:git-commit-id-maven-plugin (parent가 spring-boot-starter-parent가 아니면 revision goal 실행과 generateGitPropertiesFile=true도). git 저장소가 아니면 이 플러그인은 빼 주세요.\n다른 설정 파일이나 키는 필요 없어요.",
+    "2) 저장소 줄 maven { url 'https://jitpack.io' } 과 의존성 " + KIT_DEP + " 을 추가해 주세요.\nbuild.gradle.kts면 Kotlin 문법(maven(\"https://jitpack.io\") · implementation(\"…\")), pom.xml이면 <repository> · <dependency>로 넣어 주세요.\n지원: Spring Boot 3.2 이상 · Java 17 이상 · Spring MVC 앱만 (아니면 설치하지 말고 알려 주세요)\n코드가 실행 중인 버전과 같은지 비교하려면 커밋 정보 플러그인도 넣어 주세요: Gradle id 'com.gorylenko.gradle-git-properties' version '4.0.1' · Maven io.github.git-commit-id:git-commit-id-maven-plugin (parent가 spring-boot-starter-parent가 아니면 revision goal 실행과 generateGitPropertiesFile=true도). git 저장소가 아니면 이 플러그인은 빼 주세요.\n다른 설정 파일이나 키는 필요 없어요.",
     '3) 빌드가 통과하는지 확인하고 서비스를 재시작해 주세요.\n바뀐 파일과 재시작 명령을 알려주세요.',
   ],
 }
@@ -53,10 +55,11 @@ const TITLES: Record<OnbStep, { title: string; sub: string }> = {
 }
 
 export default function Onboarding({ step }: { step: OnbStep }) {
-  const { showMessage, home: appHome, setHome: setAppHome } = useApp()
+  const { showMessage, home: appHome, setHome: setAppHome, ai } = useApp()
+  const [codeDirty, setCodeDirty] = useState(false) // ④ 고르거나 넣은 값이 연결 전 (-250)
   const [requests, setRequests] = useState<ConnectRequest[]>([])
   const [fw, setFw] = useState('Spring Boot')
-  const { copied, copy } = useCopy<'claude' | 'codex' | 'kit'>()
+  const { copied, copy } = useCopy<'claude' | 'codex' | 'kit' | 'dep'>()
   // 새로고침 뒤에도 연결 여부를 알도록 (허용한 서비스는 대기 목록에서 빠진다). 아래 폴링이 연결 전까지 받는다
   const [home, setHome] = useState<Home>()
   // 허용 · 무시는 이 화면 상태로 둔다 (무시는 서버에 저장되지 않는다)
@@ -65,9 +68,14 @@ export default function Onboarding({ step }: { step: OnbStep }) {
   const [ignored, setIgnored] = useState<string[]>([])
   const [picked, setPicked] = useState<string>() // ② 목록에서 고른 요청. 없으면 맨 위
   const entered = useRef(false) // 들어올 때 한 번만 홈으로 보낼지 본다 (단계를 옮겨도 이 화면은 다시 그려지지 않는다)
+  // 로그인에서 넘어오면 올라오며 나타난다 (-259)
+  const wrap = useRef<HTMLDivElement>(null)
+  useLayoutEffect(() => {
+    if (shouldEnter('afterLogin')) enter(wrap.current)
+  }, [])
 
-  const loadRequests = async (alive: () => boolean = () => true) => {
-    const list = await getConnectRequests()
+  const loadRequests = async (alive: () => boolean = () => true, again = false) => {
+    const list = await getConnectRequests(again)
     if (alive()) setRequests([...list].sort((a, b) => b.requestedAt.localeCompare(a.requestedAt)))
   }
 
@@ -81,7 +89,11 @@ export default function Onboarding({ step }: { step: OnbStep }) {
       if (!entered.current) {
         entered.current = true
         // 정상 연결 중 ① · ② 주소로 들어오면 홈 (F-CONN-08, -223)
-        if (redirectHome(step, h.service)) location.hash = '#/'
+        // 받은 홈 데이터를 넘겨 홈이 빈 채로 떴다 채워지지 않게 한다 (-259)
+        if (redirectHome(step, h.service)) {
+          setAppHome(h)
+          location.hash = '#/'
+        }
       }
     },
     5_000,
@@ -114,7 +126,7 @@ export default function Onboarding({ step }: { step: OnbStep }) {
     try {
       await ignoreRequest(r.id)
       setIgnored((x) => [...x, r.id])
-      showMessage('요청을 무시했어요 · 다시 뜨면 허용할 수 있어요')
+      showMessage('요청을 무시했어요 · 20초쯤 뒤 다시 찾기를 누르면 다시 떠요')
     } catch {
       // 래퍼가 띄웠다
     }
@@ -152,14 +164,16 @@ export default function Onboarding({ step }: { step: OnbStep }) {
   // 이 화면에서 허용했거나 정상 연결된 서비스 (-222: ② 다음 · 나중에 기준). 해제 확인이 필요하면 연결로 치지 않는다 (-223)
   const connectedName = approved?.name ?? (connectedNormally(home?.service ?? null) ? home!.service!.name : null)
   const ask = !approved && needsConfirm(home?.service ?? null) ? home!.service! : null
+  const listing = showRequests(home?.service ?? null, !!approved) // 해제 안내가 떠도 목록은 그 아래에 (-250)
   const env = kitEnv(home?.kitUrl) // 딸깍이 7777이 아니면 ① 안내 (-151)
   const isSpring = fw === 'Spring Boot'
   const chosen = visible.find((r) => r.id === picked) ?? visible[0]
 
   return (
-    <div className={s.wrap}>
+    <div ref={wrap} className={s.wrap}>
       <PageTitle title={TITLES[step].title} sub={TITLES[step].sub} />
-      <StepChips steps={stepChips(step)} doneMark="after" />
+      {/* AI 표시를 받기 전(null)에는 건너뜀으로 보지 않는다 */}
+      <StepChips steps={stepChips(step, ai?.connected === false)} doneMark="after" />
       {step === 1 && (
         <Panel className={s.kit}>
           <div className={s.tabs}>
@@ -169,10 +183,8 @@ export default function Onboarding({ step }: { step: OnbStep }) {
               </button>
             ))}
             <span className={s.grow} />
-            {detected && (detected.javaVersion || detected.buildTool) && (
-              <span className={s.caption}>
-                감지됨: {[detected.javaVersion && `Java ${detected.javaVersion}`, detected.buildTool].filter(Boolean).join(' · ')}
-              </span>
+            {detected && detectedText(detected.javaVersion, detected.buildTool) && (
+              <span className={s.caption}>감지됨: {detectedText(detected.javaVersion, detected.buildTool)}</span>
             )}
           </div>
           {isSpring ? (
@@ -231,27 +243,38 @@ export default function Onboarding({ step }: { step: OnbStep }) {
           <div className={s.listHead}>
             <span className={s.stepTitle}>서비스 재시작 → 연결할 서비스를 골라 허용</span>
             <span className={s.grow} />
-            {!connectedName && !ask && (
-              <Button variant="outline" size="sm" arrow={false} onClick={() => loadRequests().catch(() => {})}>
+            {listing && (
+              <Button
+                variant="outline"
+                size="sm"
+                arrow={false}
+                onClick={() => {
+                  // 서버가 되살린 무시한 요청을 화면이 다시 거르지 않게 (!155 리뷰)
+                  setIgnored([])
+                  loadRequests(undefined, true).catch(() => {})
+                }}
+              >
                 다시 찾기
               </Button>
             )}
           </div>
-          {connectedName ? (
+          {connectedName && (
             <span className={s.done}>
               <span className={s.doneDot} />✓ {connectedName} 연결됨
             </span>
-          ) : ask ? (
-            // 연결 점검 3번 연속 실패 → 사용자가 확인해야만 해제 (F-CONN-09)
+          )}
+          {ask && (
+            // 연결 점검 3번 연속 실패 · 생존 신호 1분 30초 끊김 → 사용자가 확인해야만 해제 (F-CONN-09, -250)
             <div className={s.request} data-warn="">
-              <span className={s.reqTitle}>{ask.name}에 3번 연속 닿지 않았어요</span>
-              <span className={s.caption}>연결을 해제하면 다른 서비스를 연결할 수 있어요</span>
+              <span className={s.reqTitle}>{ask.name}에 닿지 않아요</span>
+              <span className={s.caption}>생존 신호가 1분 30초 넘게 없거나 3번 연속 닿지 않았어요 · 연결을 해제하면 다른 서비스를 연결할 수 있어요</span>
               {discErr && <span className={s.warn}>{discErr}</span>}
               <div className={s.reqActions}>
                 <Button onClick={() => disconnect()}>연결 해제</Button>
               </div>
             </div>
-          ) : visible.length === 0 ? (
+          )}
+          {!listing ? null : visible.length === 0 ? (
             <span className={s.caption}>연결 요청을 기다리고 있어요</span>
           ) : (
             <>
@@ -271,11 +294,27 @@ export default function Onboarding({ step }: { step: OnbStep }) {
                     <span className={s.rowName}>{r.appName}</span>
                     <span className={s.caption}>
                       {r.host}:{r.port} · {r.framework} {r.frameworkVersion} · PID {r.pid} · {ago(r.requestedAt)}
+                      {r.starterOutdated && <span className={s.warn}> · 스타터킷 옛 버전</span>}
                     </span>
                   </button>
                 ))}
               </div>
-              {chosen && (
+              {chosen?.starterOutdated ? (
+                // 1.1.0 전 스타터킷은 토큰을 몰라 허용해도 API 목록 · 측정값이 401 — 허용 대신 올리라는 안내 (F-CONN-04, -221)
+                <div className={s.request} data-warn="">
+                  <span className={s.reqTitle}>스타터킷이 옛 버전이라 연결할 수 없어요</span>
+                  <span className={s.caption}>v1.1.0 이상으로 올린 뒤 앱을 다시 켜 주세요</span>
+                  <div className={s.reqActions}>
+                    <code className={s.caption}>{KIT_DEP}</code>
+                    <Button variant="outline" size="sm" onClick={() => copy(KIT_DEP, 'dep')}>
+                      {copied === 'dep' ? '복사됨' : '복사'}
+                    </Button>
+                    <Button variant="text" onClick={() => ignore(chosen)}>
+                      아니에요
+                    </Button>
+                  </div>
+                </div>
+              ) : chosen && (
                 <div className={s.reqActions}>
                   <Button onClick={() => approve(chosen)}>이 서비스 연결</Button>
                   <Button variant="text" onClick={() => ignore(chosen)}>
@@ -295,7 +334,7 @@ export default function Onboarding({ step }: { step: OnbStep }) {
       {step === 4 && (
         // ④ 소스코드 연결 — 검사를 시작할 때는 코드 연결 화면을 거치지 않는다 (-224 · -245)
         <Panel>
-          <CodeConnect />
+          <CodeConnect onDirty={setCodeDirty} />
         </Panel>
       )}
       <div className={s.foot}>
@@ -311,7 +350,7 @@ export default function Onboarding({ step }: { step: OnbStep }) {
         )}
         <span className={s.grow} />
         {canNext(step, !!connectedName) ? (
-          <Button onClick={() => (location.hash = nextHash(step))}>{step === 4 ? '홈으로' : '다음'}</Button>
+          <Button onClick={() => (location.hash = nextHash(step))}>{step === 4 ? homeLabel(codeDirty) : '다음'}</Button>
         ) : (
           <Button disabled arrow={false}>
             허용하면 다음
@@ -328,7 +367,7 @@ export default function Onboarding({ step }: { step: OnbStep }) {
               <Button variant="outline" onClick={() => setAlready(null)}>
                 닫기
               </Button>
-              {/* 끈 앱 자리(같은 포트)에 다른 앱을 띄우면 점검이 성공해 해제 안내가 안 뜬다 → 끊겼으면 여기서 해제 (-223) */}
+              {/* 끈 앱 자리(같은 포트)에 다른 앱을 띄우면 점검이 성공해, 신호가 끊긴 지 1분 30초 전이거나 딸깍이 다시 켜졌으면 해제 안내가 안 뜬다 → 끊겼으면 여기서 해제 (-223 · -250) */}
               {home?.service && !home.service.connected && (
                 <Button variant="outline" arrow={false} onClick={() => disconnectAndApprove(already)}>
                   기존 연결 해제

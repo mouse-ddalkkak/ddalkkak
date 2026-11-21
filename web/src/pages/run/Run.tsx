@@ -24,6 +24,7 @@ import { trapTab } from '../../utils/keys'
 import { watchRun } from './watchRun'
 import ServerStatus from '../home/ServerStatus'
 import ResumeDialog from '../../components/ResumeDialog'
+import Dialog from '../../components/Dialog'
 import s from './Run.module.css'
 
 const MAX_LOGS = 200 // F-RUN-10 최근 로그 200줄
@@ -34,6 +35,8 @@ export default function Run({ runId }: { runId: string }) {
   const [data, setData] = useState<Progress>()
   const [logs, setLogs] = useState<LogEvent[]>([])
   const [stopEvent, setStopEvent] = useState<StopEvent | null>(null)
+  // 중단은 되돌릴 수 없어 한 번 묻는다 (-253). 묻는 동안 오류 팝업은 가린다 — 고르지 않으면 다시 보인다
+  const [askStop, setAskStop] = useState(false)
   // 딸깍 재시작으로 멈춘 회차면 멈춘 단계 이름(없으면 null) — 이어서 검사할지 묻는다 (-228). undefined면 묻지 않음
   const [resume, setResume] = useState<string | null | undefined>(undefined)
   // 이어서 · 여기까지를 고르면 같은 주소에서 스트림을 다시 붙인다
@@ -139,7 +142,7 @@ export default function Run({ runId }: { runId: string }) {
   // 팝업 빈 곳을 눌러 포커스가 body로 가도 잡도록 document에 건다 (-194)
   const popup = useRef<HTMLDivElement>(null)
   useEffect(() => {
-    if (!stopEvent) return
+    if (!stopEvent || askStop) return
     const onKey = (e: globalThis.KeyboardEvent) => {
       if (e.key !== 'Tab' || !popup.current) return
       const next = trapTab<HTMLButtonElement>(popup.current, document.activeElement, e.shiftKey)
@@ -149,7 +152,7 @@ export default function Run({ runId }: { runId: string }) {
     }
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
-  }, [stopEvent])
+  }, [stopEvent, askStop])
 
   const toggleFull = async () => {
     if (full) return setFull(null)
@@ -189,7 +192,7 @@ export default function Run({ runId }: { runId: string }) {
           </div>
           <div className={s.actions}>
             {data.leftMin != null && <span className={s.left}>약 {data.leftMin}분 남음</span>}
-            <Button variant="outline" size="sm" onClick={stop}>
+            <Button variant="outline" size="sm" onClick={() => setAskStop(true)}>
               중단
             </Button>
           </div>
@@ -252,7 +255,30 @@ export default function Run({ runId }: { runId: string }) {
           </span>
         </div>
       </section>
-      {stopEvent && (
+      {askStop && (
+        <Dialog
+          title="검사를 중단할까요?"
+          onClose={() => setAskStop(false)}
+          actions={
+            <>
+              <Button variant="outline" onClick={() => setAskStop(false)}>
+                계속 검사
+              </Button>
+              <Button
+                onClick={() => {
+                  setAskStop(false)
+                  stop()
+                }}
+              >
+                중단
+              </Button>
+            </>
+          }
+        >
+          <p className={s.caption}>도는 도구를 멈추고 여기까지 결과로 정리해요. 남은 항목은 미검사로 남고 되돌릴 수 없어요</p>
+        </Dialog>
+      )}
+      {stopEvent && !askStop && (
         <div className={s.overlay}>
           <div role="alertdialog" aria-modal="true" aria-labelledby="run-stop-title" className={s.popup} ref={popup}>
             <div className={s.popHead}>
@@ -284,7 +310,7 @@ export default function Run({ runId }: { runId: string }) {
               <Button variant="outline" size="sm" onClick={partial}>
                 여기까지 결과 보기
               </Button>
-              <Button variant="outline" size="sm" onClick={stop}>
+              <Button variant="outline" size="sm" onClick={() => setAskStop(true)}>
                 중단
               </Button>
               <span className={s.grow} />

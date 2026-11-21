@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useLayoutEffect, useRef, useState } from 'react'
 import { ackSetup, getSetup } from '../../api/setup'
 import { useLoad } from '../../hooks/useLoad'
 import { useCopy } from '../../hooks/useCopy'
@@ -6,6 +6,7 @@ import Button from '../../components/Button'
 import Checkbox from '../../components/Checkbox'
 import TitleFrame from '../../components/TitleFrame'
 import { HamsterSprite } from '../../components/HamsterWalk'
+import { markEnter, merge } from '../../utils/screenFx'
 import s from './Setup.module.css'
 
 // 0-1 설치 — 자동 생성 관리자 계정 (F-INST-03). "저장했어요" 체크 전에는 버튼 비활성
@@ -14,11 +15,16 @@ export default function Setup() {
   const [saved, setSaved] = useState(false)
   const { copied, copy } = useCopy()
   const [busy, setBusy] = useState(false)
+  // 들어올 때 블록들이 가운데에서 펼쳐지고, 로그인으로 갈 때 가운데로 모인다 (-259)
+  const wrap = useRef<HTMLDivElement>(null)
+  useLayoutEffect(() => void merge(wrap.current!, 'in'), [])
 
   const next = async () => {
     setBusy(true)
     try {
       await ackSetup()
+      await merge(wrap.current!, 'out')
+      markEnter('login')
       location.hash = '#/login'
     } catch {
       setBusy(false)
@@ -26,7 +32,7 @@ export default function Setup() {
   }
 
   return (
-    <div className={s.wrap}>
+    <div ref={wrap} className={s.wrap}>
       <TitleFrame className={s.card}>
         <span className={s.hero}>딸깍</span>
         <HamsterSprite height={112} />

@@ -18,11 +18,12 @@ public class RunLookup {
 	/**
 	 * @param status 소문자 {@link RunStatus}
 	 * @param aiMode llm · default
+	 * @param aiAsked 준비 때 AI(키)를 쓰기로 했는지. aiMode 와 달리 재검사 · AI 호출 실패여도 true (-252)
 	 * @param hasCode 코드 연결이 있는 회차 (코드 없이 검사하면 false)
 	 * @param snapshotId 이 회차가 받은 API 목록 "snap_12". 아직 못 받았으면 null
 	 * @param codeSourceId 코드 연결 줄. 코드 없이 검사하면 null (type 이 none 인 줄은 hasCode 가 false)
 	 */
-	public record Info(Long id, Long serviceId, String status, String aiMode, boolean hasCode, String snapshotId,
+	public record Info(Long id, Long serviceId, String status, String aiMode, boolean aiAsked, boolean hasCode, String snapshotId,
 			Long codeSourceId) {
 	}
 
@@ -63,6 +64,11 @@ public class RunLookup {
 		return runs.countByServiceIdAndStatusIn(serviceId, List.of(RunStatus.RUNNING.value())) > 0;
 	}
 
+	/** {@link #running(Long)}의 "svc_1" 판. 화면 업데이트가 본다 (-221) */
+	public boolean running(String serviceId) {
+		return Optional.ofNullable(Run.serviceIdOf(serviceId)).map(this::running).orElse(false);
+	}
+
 	/** 아직 코드 작업 폴더를 쓰는 회차(준비 중 · 준비됨 · 검사 중)의 code_source id. 코드 가져오기가 안 쓰는 폴더를 지울 때 본다 */
 	public Set<Long> activeCodeSourceIds(Long serviceId) {
 		return runs.findByServiceIdAndStatusIn(serviceId, List.of(RunStatus.PREPARING.value(), RunStatus.READY.value(), RunStatus.RUNNING.value()))
@@ -77,7 +83,7 @@ public class RunLookup {
 		boolean hasCode = run.codeSourceId != null && Optional.ofNullable(codeSources.of(List.of(run.codeSourceId)).get(run.codeSourceId))
 			.map(source -> !"none".equals(source.type()))
 			.orElse(false);
-		return new Info(run.id, run.serviceId, run.status, run.aiMode, hasCode, run.snapshotId == null ? null : "snap_" + run.snapshotId,
+		return new Info(run.id, run.serviceId, run.status, run.aiMode, run.aiAsked, hasCode, run.snapshotId == null ? null : "snap_" + run.snapshotId,
 				run.codeSourceId);
 	}
 

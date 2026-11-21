@@ -57,7 +57,7 @@ class RawResultWriter {
 
 	/** 시나리오 하나의 줄을 시작한다. 없는 회차는 ApiException(NOT_FOUND) */
 	RawResultRow start(String runId, ScenarioStore.Item item) {
-		RunLookup.Info run = runs.find(runId).orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND));
+		RunLookup.Info run = db(() -> runs.find(runId)).orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND));
 		RawResultRow row = new RawResultRow();
 		row.runId = run.id();
 		row.itemKey = item.key();
@@ -78,8 +78,8 @@ class RawResultWriter {
 
 	/** 이 회차 그 시나리오의 줄 (마지막 것) */
 	java.util.Optional<RawResultRow> find(String runId, String itemKey) {
-		return runs.find(runId)
-			.flatMap(run -> results.findByRunIdOrderById(run.id()).stream().filter(r -> itemKey.equals(r.itemKey)).reduce((a, b) -> b));
+		return db(() -> runs.find(runId)
+			.flatMap(run -> results.findByRunIdOrderById(run.id()).stream().filter(r -> itemKey.equals(r.itemKey)).reduce((a, b) -> b)));
 	}
 
 	RawReport.Result skip(RawResultRow row, String reason) {
@@ -94,8 +94,24 @@ class RawResultWriter {
 
 	RawReport.Result save(RawResultRow row) {
 		row.endedAt = LocalDateTime.now();
-		results.save(row);
+		db(() -> results.save(row));
 		return toResult(row);
+	}
+
+	/**
+	 * 인터럽트를 잠깐 떼고 DB 를 부른다. 중단 · 멈춤은 검사 스레드(virtual thread)를 인터럽트하는데, 인터럽트가 선 채로는 JDBC 소켓이
+	 * "Closed by interrupt"로 끊겨 그 뒤에 쓰는 줄(중단됨)이 남지 않는다 (-253 · !166 리뷰 1-2). 중단 신호는 되살린다. 계정 줄(TestAccounts)도 같이 쓴다 (2-2)
+	 */
+	static <T> T db(java.util.function.Supplier<T> call) {
+		boolean interrupted = Thread.interrupted();
+		try {
+			return call.get();
+		}
+		finally {
+			if (interrupted) {
+				Thread.currentThread().interrupt();
+			}
+		}
 	}
 
 	RawReport.Result toResult(RawResultRow row) {

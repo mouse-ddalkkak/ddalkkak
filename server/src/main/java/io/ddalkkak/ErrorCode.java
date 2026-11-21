@@ -14,12 +14,18 @@ public enum ErrorCode {
 	BAD_REQUEST(HttpStatus.BAD_REQUEST, "요청 형식을 확인해 주세요"),
 	SERVER_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "잠시 후 다시 해 주세요"),
 	ALREADY_CONNECTED(HttpStatus.CONFLICT, "이미 연결된 서비스가 있어요"),
+	// 토큰을 모르는 스타터킷(1.1.0 전)은 허용해도 API 목록 · 측정값이 401 이라 허용하지 않는다 (-221)
+	STARTER_OUTDATED(HttpStatus.CONFLICT, "스타터킷을 새 버전으로 올려 주세요"),
+	UPDATE_UNAVAILABLE(HttpStatus.CONFLICT, "업데이트할 새 버전이 없어요"),
+	UPDATE_FAILED(HttpStatus.BAD_GATEWAY, "업데이트를 시작하지 못했어요 · 설치 명령을 다시 실행해 주세요"),
 	SERVICE_OFFLINE(HttpStatus.CONFLICT, "앱이 꺼져 있어요"),
 	RUN_IN_PROGRESS(HttpStatus.CONFLICT, "이미 검사 중이에요"),
 	PREPARE_ENDED(HttpStatus.CONFLICT, "준비가 이미 끝났어요"),
 	ZIP_INVALID(HttpStatus.BAD_REQUEST, "압축을 풀 수 없어요"),
 	// 코드 작업 error · 준비 실패 error 로만 나가고 HTTP 응답으로는 안 낸다(표에 상태가 없음). 가장 가까운 상태를 둔다
 	CODE_FETCH_FAILED(HttpStatus.BAD_GATEWAY, "저장소에 접근할 수 없어요 · 토큰을 확인해 주세요"),
+	CODE_BRANCH_NOT_FOUND(HttpStatus.BAD_REQUEST, "브랜치를 찾을 수 없어요 · 브랜치 이름을 확인해 주세요"),
+	CODE_URL_INVALID(HttpStatus.BAD_REQUEST, "저장소 주소를 확인해 주세요 · https://…"),
 	// 코드 작업 error 로만 나간다(local · jar 경로가 홈 폴더 밖이거나 없음). 이름 · 문구는 B4 와 확인 (docs/run-flow.md 정할 것)
 	CODE_PATH_INVALID(HttpStatus.BAD_REQUEST, "홈 폴더 아래에 있는 경로를 적어 주세요"),
 	NO_APIS(HttpStatus.CONFLICT, "API를 찾지 못했어요"),
@@ -30,6 +36,8 @@ public enum ErrorCode {
 	// 4 로그인 설정 (-230). 401 은 웹이 관리자 로그아웃으로 보니 400 으로 낸다
 	NO_LOGIN_API(HttpStatus.BAD_REQUEST, "가입 · 로그인 API를 찾지 못했어요 · 토큰이나 쿠키를 넣어 주세요"),
 	TARGET_LOGIN_FAILED(HttpStatus.BAD_REQUEST, "로그인하지 못했어요 · 아이디 · 비밀번호를 확인하거나 토큰 · 쿠키를 넣어 주세요"),
+	// 화면 4 "딸깍이 계정 만들기"에서 고객 앱 가입이 4xx — message 뒤에 " · 앱 응답 {상태}: {앱 문구}"가 붙는다 (-261)
+	TARGET_SIGNUP_FAILED(HttpStatus.BAD_REQUEST, "테스트 계정을 만들지 못했어요 · 가입 규칙을 확인하거나 내 계정 · 토큰 · 쿠키를 넣어 주세요"),
 	;
 
 	final HttpStatus status;

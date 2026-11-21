@@ -69,8 +69,11 @@ public class K6Runner {
 
 	private final RunLookup runs;
 
+	private final PathValues paths;
+
 	K6Runner(DockerTool docker, ServiceRegistry services, RawResultWriter writer, JsonMapper json, LoginProbe probe, TargetApp target,
-			ApiCatalog catalog, RunLookup runs) {
+			ApiCatalog catalog, RunLookup runs, PathValues paths) {
+		this.paths = paths;
 		this.catalog = catalog;
 		this.runs = runs;
 		this.probe = probe;
@@ -98,13 +101,17 @@ public class K6Runner {
 		try {
 			Path out = writer.outDir(runId);
 			List<ApiCatalog.Param> params = apiParams(runId, item.api());
-			Optional<LoginProbe.Use> use = probe.allowed(item.api(), port, params, login);
+			// 경로 변수는 목록 API 에서 찾은 실제 값으로 (-262). 못 찾으면 1
+			ScanLogin.Credential before = login.credential();
+			PathValues.Filled filled = paths.fill(runId, item.api(), port, before);
+			Optional<LoginProbe.Use> use = probe.allowed(filled.api(), port, params, login);
 			if (use.isEmpty()) {
 				writer.append(row, List.of("== " + item.key() + " " + item.api() + " · 로그인 필요 → " + NO_ACCOUNT));
 				return writer.skip(row, NO_ACCOUNT);
 			}
+			filled = paths.refill(filled, runId, port, before, use.get().credential());
 			Path script = out.resolve(item.key() + ".js");
-			Files.writeString(script, K6Script.of(json, item.key(), item.api(), item.params(), target.origin(port), use.get().credential(), params), UTF_8);
+			Files.writeString(script, K6Script.of(json, item.key(), filled.api(), item.params(), target.origin(port), use.get().credential(), params), UTF_8);
 			Path summary = out.resolve(item.key() + ".summary.json");
 			Files.deleteIfExists(summary);
 
@@ -131,6 +138,9 @@ public class K6Runner {
 				boolean pullFailed = r.failure() == DockerTool.Failure.PULL;
 				lines.add("== " + item.key() + " " + item.api() + " · exit=" + r.exitCode() + (halted ? " · 멈춤" : "")
 						+ (pullFailed ? " · 받기 실패 → " + PULL_FAILED : ""));
+				if (filled.note() != null) {
+					lines.add(filled.note());
+				}
 				r.lines().forEach(line -> lines.add(login.mask(line)));
 				writer.append(row, lines);
 				if (pullFailed) {

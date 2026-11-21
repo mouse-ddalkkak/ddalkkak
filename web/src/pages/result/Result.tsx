@@ -9,7 +9,7 @@ import { useScan } from '../../hooks/useScan'
 import ProjectName from '../../components/ProjectName'
 import PromptBox from '../../components/PromptBox'
 import { AREAS, AREA_NAME, scoreBasis, scoreColor, scoreText } from '../../utils/score'
-import { koDateTime } from '../../utils/format'
+import { durationText, koDateTime } from '../../utils/format'
 import { runOnce } from '../../utils/busy'
 import { sessionMemory } from '../../utils/promptMemory'
 import s from './Result.module.css'
@@ -94,7 +94,7 @@ export default function Result({ runId }: { runId: string }) {
             <ProjectName runId={runId} name={data.projectName} onSaved={(projectName) => setData((d) => d && { ...d, projectName })} />
           </h1>
           <span className={s.meta}>
-            {koDateTime(data.at)} 검사 · 소요 {data.durationMin}분 · 시나리오 {data.scenarioCount} · 검사 항목 {data.itemCount}
+            {koDateTime(data.at)} 검사 · 소요 {durationText(data.durationMin)} · 시나리오 {data.scenarioCount} · 검사 항목 {data.itemCount}
           </span>
         </div>
         <Button onClick={() => scan.scan()} className={s.rescan}>

@@ -19,7 +19,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 /**
  * 도구 원문 로그 (docs/openapi.yaml ④ getRunLogs · F-RES-06 · scan.md §8). 원본 로그 ~/.ddalkkak/runs/{runId}/raw/{tool}.log 를 그대로
- * 준다. tool 은 LogTag(check · auth · zap · k6 · db · semgrep) — 파일이 있는 것은 auth(권한 점검 ddalkkak.log) · zap · k6 · semgrep 이고,
+ * 준다. tool 은 LogTag(check · auth · zap · k6 · db · semgrep) — 파일이 있는 것은 auth(권한 점검 · 테스트 계정 ddalkkak.log) · zap · k6 · semgrep 이고,
  * check · db 는 화면 로그에만 있어 빈 값. tool 이 없으면 전부를 도구마다 머리줄을 달아 잇는다
  */
 @RestController

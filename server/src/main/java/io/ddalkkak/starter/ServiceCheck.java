@@ -17,7 +17,8 @@ import org.springframework.stereotype.Component;
 /**
  * 연결 점검 (F-CONN-06 ④, -223). 해제하지 않은 서비스에 30초마다 GET / 를 보내고 5초까지 기다린다. 연결 불가 · 시간 초과 · 5xx 는 실패,
  * 그 밖의 응답은 성공(내용은 보지 않는다). 연속 실패 수는 {@link ServiceRegistry} 메모리에 두고 홈이 3번이면 해제 안내를 띄운다. 스스로 해제하지 않는다.
- * 10초 생존 신호(connected)와 따로 돈다 — 끈 앱 자리에 다른 앱이 뜨면 점검은 성공하니, 생존 신호가 끊긴 것만으로는 해제를 묻지 않는다
+ * 10초 생존 신호(connected)와 따로 돈다. 끈 앱 자리에 다른 앱이 뜨면 점검은 성공하고 검사 중에는 점검을 건너뛰니, 생존 신호가 1분 30초
+ * 끊긴 것도 홈이 따로 해제 안내로 본다 ({@link ServiceRegistry#silent}, -250)
  */
 @Component
 class ServiceCheck {

@@ -37,7 +37,7 @@ docker version
 docker run --rm --pull always -v /var/run/docker.sock:/var/run/docker.sock -v "${HOME}:/host-home:ro" -e HOST_HOME="${HOME}" ghcr.io/mouse-ddalkkak/ddalkkak-server
 ```
 
-설치가 끝나면 출력된 주소(보통 http://localhost:7777)를 열고 출력된 `admin` 비밀번호로 로그인합니다. 7777을 다른 프로그램이 쓰고 있으면 7778부터 빈 포트로 열고 그 주소를 알려 줍니다. 같은 명령을 다시 실행하면 업그레이드되고 데이터는 그대로입니다. 끝에 ` uninstall`을 붙이면 데이터까지 모두 지웁니다.
+설치가 끝나면 출력된 주소(보통 http://localhost:7777)를 열고 출력된 `admin` 비밀번호로 로그인합니다. 7777을 다른 프로그램이 쓰고 있으면 7778부터 빈 포트로 열고 그 주소를 알려 줍니다. 같은 명령을 다시 실행하면 업그레이드되고 데이터는 그대로입니다. 새 버전이 나오면 홈에 띠가 뜨고 "업데이트" 버튼으로 올릴 수 있습니다. 홈에 업데이트 버튼이 없는 옛 버전(v1.2.2 이하)에서는 이 명령을 한 번 다시 실행합니다. 끝에 ` uninstall`을 붙이면 데이터까지 모두 지웁니다.
 
 ### 다른 컴퓨터에서 열기
 
@@ -91,7 +91,7 @@ docker compose logs ddalkkak | grep -A 3 '관리자 계정'   # 첫 admin 비밀
 ```yaml
 services:
   ddalkkak:
-    image: ghcr.io/mouse-ddalkkak/ddalkkak-server:1.2.2
+    image: ghcr.io/mouse-ddalkkak/ddalkkak-server:1.2.3
     network_mode: host # 같은 서버의 앱 · 검사 도구와 localhost를 같이 쓴다. 포트는 SERVER_PORT
     restart: unless-stopped
     environment:
@@ -112,7 +112,7 @@ services:
       ddalkkak-postgres: { condition: service_healthy }
 
   ddalkkak-ai:
-    image: ghcr.io/mouse-ddalkkak/ddalkkak-ai:1.2.2
+    image: ghcr.io/mouse-ddalkkak/ddalkkak-ai:1.2.3
     network_mode: host
     restart: unless-stopped
     command: ["uvicorn", "main:app", "--host", "127.0.0.1", "--port", "8000"]

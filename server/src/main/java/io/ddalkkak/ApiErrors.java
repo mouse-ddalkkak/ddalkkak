@@ -17,7 +17,7 @@ class ApiErrors extends ResponseEntityExceptionHandler {
 	// 본문 형식을 JSON 으로 못박는다. SSE(Accept: text/event-stream)처럼 JSON 을 받지 않겠다는 요청에서도 오류는 {code, message} 로 나간다
 	@ExceptionHandler(ApiException.class)
 	ResponseEntity<ApiError> known(ApiException ex) {
-		return ResponseEntity.status(ex.code.status).contentType(MediaType.APPLICATION_JSON).body(new ApiError(ex.code));
+		return ResponseEntity.status(ex.code.status).contentType(MediaType.APPLICATION_JSON).body(new ApiError(ex.code, ex.detail));
 	}
 
 	// Spring 이 직접 처리한 오류(본문 깨짐 · 형식 · 없는 경로 · Spring 쪽 500). 상태 코드는 Spring 것을 그대로 쓴다

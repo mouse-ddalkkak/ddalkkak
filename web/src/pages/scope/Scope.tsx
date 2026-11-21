@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { getPrepareApis, getScope, putScope, startRun, type Area, type Scope as ScopeData, type ScopeItem } from '../../api/runs'
 import { useApp } from '../../app/AppContext'
-import { keepOffChoices, noCode, turnOn, type Added } from '../../utils/scopeParams'
+import { keepOffChoices, noCode, setPartOn, toggleCard, type Added } from '../../utils/scopeParams'
 import { AddDialog, EditDialog } from './ScopeDialog'
 import { syncEstimate } from './syncEstimate'
 import { useLoad } from '../../hooks/useLoad'
@@ -17,7 +17,7 @@ import { AREA_NAME } from '../../utils/score'
 import s from './Scope.module.css'
 
 // 4 검사 범위 선택 — 고른 값은 "딸깍" 때 PUT …/scope 로 보내고 POST /api/runs
-// ✎ 설정 팝업 · "+ 추가"는 그 자리에서 PUT …/scope로 저장하고 응답(다시 계산한 범위)으로 바꾼다. 400은 래퍼가 서버 message를 띄운다
+// ✎ 설정 팝업 · "+ 추가"는 그 자리에서 PUT …/scope로 저장하고 응답(다시 계산한 범위)으로 바꾼다. 400은 팝업 안에 서버 message를 남긴다 (-257)
 const TOOL_NAME: Record<string, string> = { k6: 'k6', zap: 'ZAP', semgrep: 'Semgrep', ddalkkak: '권한 점검' }
 const RANGE: Record<string, string> = { default: '기본', wide: '넓게', full: '전체' }
 const SEVERITY: Record<string, string> = { critical: '치명만', major: '주요까지', all: '전부' }
@@ -39,6 +39,12 @@ export default function Scope({ runId }: { runId: string }) {
   const [busy, setBusy] = useState(false)
   const [runBusy, setRunBusy] = useState(false)
   const [dialog, setDialog] = useState<{ edit: ScopeItem } | { add: Area } | null>(null)
+  // 팝업 저장 400 — 하단 바는 팝업(top layer) 뒤에 가려 팝업 안 버튼 위에 남긴다 (-257)
+  const [dialogError, setDialogError] = useState<string | null>(null)
+  const closeDialog = () => {
+    setDialog(null)
+    setDialogError(null)
+  }
   const { showMessage } = useApp()
   // "+ 추가" 대상 후보 — 이번 회차 API 목록 (-179). 실패하면 후보만 비고 자유 입력은 그대로 (맞는지는 서버 NO_TARGET)
   const apis = useLoad(() => getPrepareApis(runId), [runId]).data?.apis.map((a) => a.api) ?? []
@@ -56,12 +62,14 @@ export default function Scope({ runId }: { runId: string }) {
     if (busy) return
     sync.current?.cancel() // 저장 응답이 다시 계산한 estimate를 준다. 앞서 걸린 토글 PUT의 옛 값이 덮지 않게
     setBusy(true)
+    setDialogError(null)
     try {
-      setData(keepOffChoices(await putScope(runId, next, added), next))
-      setDialog(null)
+      setData(keepOffChoices(await putScope(runId, next, added, true), next))
+      closeDialog()
       showMessage(message)
-    } catch {
-      // 래퍼가 문구를 띄웠다. 팝업은 열어 둔다
+    } catch (e) {
+      // 팝업은 열어 두고 문구를 팝업 안에. 서버 꺼짐(code 없음)은 하단 바가 띄웠다
+      if (e instanceof ApiError && e.code) setDialogError(e.message)
     } finally {
       setBusy(false)
     }
@@ -79,17 +87,15 @@ export default function Scope({ runId }: { runId: string }) {
     sync.current?.schedule(next)
   }
   const togglePart = (area: string) =>
-    update((d) => ({ ...d, parts: d.parts.map((p) => (p.area !== area ? p : p.on ? { ...p, on: false } : turnOn(p))) }))
-  const toggleItem = (key: string) =>
-    update((d) => ({
-      ...d,
-      parts: d.parts.map((p) => ({ ...p, items: p.items.map((i) => (i.key === key ? { ...i, included: !i.included } : i)) })),
-    }))
+    update((d) => ({ ...d, parts: d.parts.map((p) => (p.area !== area ? p : setPartOn(p, !p.on))) }))
+  // 카드를 누르면 그 영역 스위치가 따라간다 — 하나라도 켜면 켜지고 다 끄면 꺼진다 (-252)
+  const toggleItem = (area: string, key: string) =>
+    update((d) => ({ ...d, parts: d.parts.map((p) => (p.area !== area ? p : toggleCard(p, key))) }))
   const all = data.parts.every((p) => noCode(p) || (p.on && p.items.every((i) => i.included)))
   const setAll = (on: boolean) =>
     update((d) => ({
       ...d,
-      parts: d.parts.map((p) => (noCode(p) ? p : { ...p, on, items: on ? p.items.map((i) => ({ ...i, included: true })) : p.items })),
+      parts: d.parts.map((p) => setPartOn(p, on)),
     }))
   const count = data.parts.filter((p) => p.on).reduce((n, p) => n + p.items.filter((i) => i.included).length, 0)
 
@@ -146,7 +152,7 @@ export default function Scope({ runId }: { runId: string }) {
               {p.items.map((i) => {
                 const inc = p.on && i.included
                 return (
-                  <div key={i.key} className={s.card} data-inc={inc ? '' : undefined} {...pressable(() => (p.on ? toggleItem(i.key) : noCode(p) || showMessage('스위치를 먼저 켜 주세요')))}>
+                  <div key={i.key} className={s.card} data-inc={inc ? '' : undefined} {...pressable(() => toggleItem(p.area, i.key))}>
                     {info === i.key && (
                       <div role="tooltip" className={s.tip} onClick={(e) => e.stopPropagation()}>
                         <span className={s.tipTitle}>왜 이 시나리오?</span>
@@ -202,7 +208,8 @@ export default function Scope({ runId }: { runId: string }) {
           item={dialog.edit}
           ai={dialog.edit.aiParams}
           busy={busy}
-          onClose={() => setDialog(null)}
+          error={dialogError}
+          onClose={closeDialog}
           onApply={(params, message) => applyParams(dialog.edit.key, params, message)}
         />
       )}
@@ -212,7 +219,8 @@ export default function Scope({ runId }: { runId: string }) {
           // 성능은 GET만 (쓰기 · 삭제 API에 부하를 주지 않는다, NF-07 · openapi ScopeInput.added)
           apis={dialog.add === 'perf' ? apis.filter((a) => a.startsWith('GET ')) : apis}
           busy={busy}
-          onClose={() => setDialog(null)} onAdd={(added) => save(data, [added], '시나리오를 추가했어요')} />
+          error={dialogError}
+          onClose={closeDialog} onAdd={(added) => save(data, [added], '시나리오를 추가했어요')} />
       )}
       <div className={s.foot}>
         <Button variant="text" arrow={false} onClick={() => (location.hash = '#/')}>

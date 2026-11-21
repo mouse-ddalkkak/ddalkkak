@@ -1,6 +1,9 @@
 package io.ddalkkak.kit;
 
 import java.lang.annotation.Annotation;
+import java.lang.reflect.Field;
+import java.lang.reflect.Modifier;
+import java.lang.reflect.RecordComponent;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.time.temporal.Temporal;
@@ -153,6 +156,9 @@ public class ApiCollector {
 			}
 			else if (body != null) {
 				out.add(new Param("body", "body", json, body.required() && !optional));
+				if ("object".equals(json)) {
+					out.addAll(bodyFields(optional ? p.nested().getNestedParameterType() : type));
+				}
 			}
 			else if (BeanUtils.isSimpleValueType(type) && !ClassUtils.isAssignable(jakarta.servlet.ServletRequest.class, type)) {
 				// 애너테이션 없는 단순 값은 Spring 이 query 로 받는다
@@ -161,6 +167,62 @@ public class ApiCollector {
 			// 그 밖(HttpServletRequest · Principal · @ModelAttribute 객체 · Pageable)은 지금은 뺀다 — §2
 		}
 		return out;
+	}
+
+	/** 필수로 보는 검증 애너테이션 (AssertTrue 는 약관 동의 — 안 실으면 false 로 400, !155 리뷰). validation 을 컴파일에 넣지 않으려고 이름으로 본다 */
+	private static final Set<String> NOT_NULL = Set.of("NotNull", "NotBlank", "NotEmpty", "AssertTrue");
+
+	/**
+	 * 본문 객체의 칸 한 단계 (-251). 딸깍이 테스트 계정 가입 본문을 채울 때 nickname 같은 흔하지 않은 필수 칸을 알 수 있게. record 는 구성요소 순서,
+	 * 클래스는 선언 필드(상위 클래스까지). static · transient · @JsonIgnore 는 빼고, @JsonProperty 이름이 있으면 그 이름. Map · java.* 은 칸을
+	 * 모르니 없다
+	 */
+	static List<Param> bodyFields(Class<?> type) {
+		List<Param> out = new ArrayList<>();
+		if (Map.class.isAssignableFrom(type) || type.getName().startsWith("java.") || type.isInterface()) {
+			return out;
+		}
+		List<Field> fields = new ArrayList<>();
+		if (type.isRecord()) {
+			for (RecordComponent c : type.getRecordComponents()) {
+				try {
+					fields.add(type.getDeclaredField(c.getName()));
+				}
+				catch (NoSuchFieldException e) {
+					// record 에는 늘 있다
+				}
+			}
+		}
+		else {
+			for (Class<?> c = type; c != null && c != Object.class; c = c.getSuperclass()) {
+				fields.addAll(List.of(c.getDeclaredFields()));
+			}
+		}
+		for (Field f : fields) {
+			int mod = f.getModifiers();
+			if (Modifier.isStatic(mod) || Modifier.isTransient(mod) || f.isSynthetic()
+					|| has(f.getAnnotations(), Set.of("JsonIgnore"))) {
+				continue;
+			}
+			String name = f.getName();
+			for (Annotation a : f.getAnnotations()) {
+				if (a.annotationType().getSimpleName().equals("JsonProperty") && AnnotationUtils.getValue(a) instanceof String v
+						&& !v.isEmpty()) {
+					name = v;
+				}
+			}
+			out.add(new Param(name, "body", jsonType(f.getType()), has(f.getAnnotations(), NOT_NULL)));
+		}
+		return out;
+	}
+
+	private static boolean has(Annotation[] annotations, Set<String> names) {
+		for (Annotation a : annotations) {
+			if (names.contains(a.annotationType().getSimpleName())) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	private static String name(String annotated, MethodParameter p) {

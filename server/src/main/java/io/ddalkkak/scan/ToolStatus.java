@@ -170,9 +170,15 @@ class ToolStatus {
 		return row.skipReason != null ? row.skipReason : AuthzCheck.skippedReason(row.itemKey, row.evidence);
 	}
 
-	/** 그 줄에서 도구를 띄웠는지 — 끝났거나(done · 건너뛴 사유 없는 partial) 띄운 뒤 남는 사유 */
+	/**
+	 * 그 줄에서 도구를 띄웠는지 — 끝났거나(done · 건너뛴 사유 없는 partial) 띄운 뒤 남는 사유. ZAP 의 요청 구성 오류는 docker 를 부르기 전 확인
+	 * 요청에서 나니 뺀다(k6 는 띄운 뒤라 센다, !160 리뷰 1-3)
+	 */
 	private static boolean ran(RawResultRow row) {
 		String reason = reason(row);
+		if ("zap".equals(row.tool) && K6Runner.BAD_REQUEST.equals(reason)) {
+			return false;
+		}
 		return reason == null ? "done".equals(row.status) || "partial".equals(row.status) : RAN.contains(reason);
 	}
 

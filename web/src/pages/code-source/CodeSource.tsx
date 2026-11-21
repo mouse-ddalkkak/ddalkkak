@@ -20,10 +20,11 @@ const JOB_POLL_MS = 1000 // docs/web.md §3
 // 작업 단계 (openapi CodeJob.step)
 const STEP: Record<string, string> = { cloning: '저장소 받는 중…', extracting: '압축 푸는 중…', decompiling: '실행 파일 복원 중…', linking: '코드 연결 중…' }
 
-export default function CodeConnect() {
+/** onDirty: 사용자가 카드를 고르거나 값을 넣었는데 아직 연결하지 않았는지 — 0-3 ④가 "연결하지 않고 홈으로"를 보인다 (-250) */
+export default function CodeConnect({ onDirty }: { onDirty?: (dirty: boolean) => void } = {}) {
   const { data, setData } = useLoad(getCodeSource, [])
   if (!data) return null
-  return <Picker last={data.last} onSaved={() => getCodeSource().then(setData, () => {})} />
+  return <Picker last={data.last} onSaved={() => getCodeSource().then(setData, () => {})} onDirty={onDirty} />
 }
 
 /** "✓ GitHub owner/order-api · main · 2시간 전 커밋 a3f9c1 · 실행 중인 버전과 일치 ✓" */
@@ -37,7 +38,7 @@ function savedLine(last: Last) {
     .join(' · ')
 }
 
-function Picker({ last, onSaved }: { last: Last | null; onSaved: () => void }) {
+function Picker({ last, onSaved, onDirty }: { last: Last | null; onSaved: () => void; onDirty?: (dirty: boolean) => void }) {
   const { showMessage, home } = useApp()
   const pick = initialPick(last)
   const [sel, setSel] = useState<Key | null>(pick.sel)
@@ -45,9 +46,13 @@ function Picker({ last, onSaved }: { last: Last | null; onSaved: () => void }) {
   const set = (patch: Partial<Fields>) => setF((x) => ({ ...x, ...patch }))
   const [busy, setBusy] = useState(false)
   const [step, setStep] = useState<string | null>(null)
-  const [jobError, setJobError] = useState<string | null>(null)
+  // 연결 버튼 옆 오류 — 작업 error · 400 · ZIP 확인. 사라지지 않고 다시 고르거나 고칠 때 지운다 (-257)
+  const [error, setError] = useState<string | null>(null)
   const [linked, setLinked] = useState(false)
   const [dragging, setDragging] = useState(false)
+  // 사용자가 바꿨는지만 센다 — 저장한 방식 · 실행 파일 후보로 미리 채운 값은 버려지는 입력이 아니다
+  const [touched, setTouched] = useState(false)
+  useEffect(() => onDirty?.(touched && !linked), [touched, linked, onDirty])
 
   // 실행 파일 후보 (F-CODE-05) — 경로 입력칸 없이 이 목록에서만 고른다. 409(연결된 서비스 없음)면 후보 자리에 안내
   const arts = useLoad(getCodeArtifacts, [])
@@ -60,10 +65,14 @@ function Picker({ last, onSaved }: { last: Last | null; onSaved: () => void }) {
   const choose = (key: Key | null) => {
     setSel(key)
     setLinked(false)
+    setTouched(true)
+    setError(null)
   }
   const edit = (patch: Partial<Fields>) => {
     set(patch)
     setLinked(false)
+    setTouched(true)
+    setError(null)
   }
 
   const gitFields = (
@@ -103,7 +112,7 @@ function Picker({ last, onSaved }: { last: Last | null; onSaved: () => void }) {
   const pickZip = (file: File | undefined) => {
     if (!file) return
     const problem = zipProblem(file)
-    if (problem) return showMessage(problem)
+    if (problem) return setError(problem)
     choose('zip')
     edit({ zip: file })
   }
@@ -150,9 +159,13 @@ function Picker({ last, onSaved }: { last: Last | null; onSaved: () => void }) {
   const connect = async () => {
     if (busy || !ready) return
     setBusy(true)
-    setJobError(null)
+    setError(null)
     try {
-      const { jobId } = sel === 'zip' && f.zip ? await uploadCodeZip(f.zip) : await startCodeSource(codeInput(sel, f)!)
+      // 시작 · 올리기 400은 버튼 옆에(inline). 작업 폴링 오류는 래퍼가 하단 바에 띄우니 여기서만 남긴다 (-257)
+      const { jobId } = await (sel === 'zip' && f.zip ? uploadCodeZip(f.zip) : startCodeSource(codeInput(sel, f)!)).catch((e) => {
+        if (e instanceof ApiError && e.code) setError(e.message)
+        throw e
+      })
       // 코드 작업 1초 폴링: done이면 멈춤 · error면 message · 404면 멈춤 (§3). 코드 없이(jobId null)는 바로 끝
       while (jobId && mounted.current) {
         let job
@@ -164,7 +177,7 @@ function Picker({ last, onSaved }: { last: Last | null; onSaved: () => void }) {
         }
         if (job) setStep(job.step)
         if (job?.error) {
-          setJobError(job.error.message)
+          setError(job.error.message)
           throw new Error(job.error.code)
         }
         if (job?.done) {
@@ -178,7 +191,7 @@ function Picker({ last, onSaved }: { last: Last | null; onSaved: () => void }) {
       setLinked(true)
       onSaved()
     } catch {
-      // 작업 error는 위에서 보였고, 그 밖은 래퍼가 띄웠다. 실패하면 저장하지 않는다
+      // 작업 error · 시작 · 올리기 400은 위에서 보였다. 작업 404 · 서버 꺼짐은 래퍼가 하단 바에. 실패하면 저장하지 않는다
     } finally {
       if (mounted.current) {
         setBusy(false)
@@ -219,7 +232,7 @@ function Picker({ last, onSaved }: { last: Last | null; onSaved: () => void }) {
         </Button>
         {busy && step && STEP[step] && <span className={s.step}>{STEP[step]}</span>}
         {linked && !busy && <span className={s.done}>✓ 연결됨</span>}
-        {jobError && <span className={s.error}>{jobError}</span>}
+        {error && <span className={s.error}>{error}</span>}
       </div>
     </div>
   )

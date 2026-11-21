@@ -1,4 +1,6 @@
 .field{position:absolute;inset:0;z-index:0;pointer-events:none;overflow:hidden}
+/* 4각 별 배경은 서서히 나타난다 — 로그인 → 홈에서 점 별이 한 번에 바뀌어 새로고침처럼 보이던 것 (-259) */
+.sparkles{animation:global(ttk-fade-in) .6s ease-out}
 .landing{background-image:var(--bg-starfield);background-size:var(--bg-starfield-size);background-position:var(--bg-starfield-pos)}
 .layer{position:absolute;left:0;top:0;animation:global(ttk-starfall) linear infinite}
 .spark{position:absolute;animation:global(ttk-twinkle) ease-in-out infinite}

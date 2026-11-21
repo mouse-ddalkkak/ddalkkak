@@ -72,11 +72,15 @@ export function keepOffChoices(res: Scope, before: Scope): Scope {
 /** 코드 없는 회차의 코드 품질 — 서버가 OFF "코드 없음"으로 고정하고 카드를 세지 않는다 (run-flow.md · F-SCOPE-01) */
 export const noCode = (part: ScopePart) => part.offReason === '코드 없음'
 
-/** 영역 스위치 켜기. 포함된 카드가 하나도 없으면 AI 추천 카드(recommended && !excluded)를, 그것도 없으면 그 영역 카드를 모두 넣는다.
- *  서버 ScenarioStore.update와 같은 규칙(run-flow.md) — 다시 연 화면은 GET이 꺼진 영역 카드를 모두 빠진 채 주므로 화면이 되살려 보낸다 */
-export function turnOn(part: ScopePart): ScopePart {
+/** 영역 스위치. 켜면 그 영역 카드가 전부 켜지고(AI가 뺀 카드도), 끄면 전부 꺼진다 (-252). 코드 없는 영역은 그대로 */
+export function setPartOn(part: ScopePart, on: boolean): ScopePart {
   if (noCode(part)) return part
-  if (part.items.some((i) => i.included)) return { ...part, on: true }
-  const back = part.items.some((i) => i.recommended && !i.excluded)
-  return { ...part, on: true, items: part.items.map((i) => ({ ...i, included: !back || (i.recommended && !i.excluded) })) }
+  return { ...part, on, items: part.items.map((i) => ({ ...i, included: on })) }
+}
+
+/** 카드 하나 켜고 끄기. 영역 스위치는 카드를 따라간다: 하나라도 켜져 있으면 켜지고, 다 끄면 저절로 꺼진다 (-252) */
+export function toggleCard(part: ScopePart, key: string): ScopePart {
+  if (noCode(part)) return part
+  const items = part.items.map((i) => (i.key === key ? { ...i, included: !i.included } : i))
+  return { ...part, on: items.some((i) => i.included), items }
 }

@@ -2,6 +2,12 @@
 import type { Home } from '../../api/home'
 import type { ConnectRequest } from '../../api/services'
 import type { CodeSource } from '../../api/codeSource'
+import type { UpdateStatus } from '../../api/update'
+
+/** 게이지에 쓸 값 — 앱 연결 전(service null)은 딸깍이 도는 곳을 잰 hostHealth, 연결된 뒤는 스타터킷 생존 신호(끊기면 null) (-256) */
+export function shownHealth(home: Pick<Home, 'service' | 'health' | 'hostHealth'>): Home['health'] {
+  return home.service ? home.health : home.hostHealth
+}
 
 /** 게이지 3개는 늘 남긴다. 끊기면(health null) 값 없이 회색 */
 export function homeGauges(health: Home['health']): { k: string; v: number | null }[] {
@@ -64,13 +70,18 @@ export function codeLine(last: Pick<CodeSource, 'type' | 'ref' | 'branch'> | nul
 // node --test가 이 파일을 그대로 돌려서 utils/format의 gb를 import하지 않는다 (확장자 없는 import를 못 찾음)
 const gb = (mb: number) => (Math.round((mb / 1024) * 10) / 10).toString()
 
-/** 게이지 아래 줄 — 무엇을 잰 값인지 · 단위 (스타터킷이 시스템 전체 CPU · 메모리, 앱 작업 폴더가 있는 디스크를 잰다). 끊겨도 설명은 남긴다 */
-export function gaugeSubs(health: Home['health']) {
-  if (!health) return ['시스템 전체', '시스템 전체', '앱 작업 폴더 디스크']
+/**
+ * 게이지 아래 줄 — 무엇을 잰 값인지 · 단위. 스타터킷은 시스템 전체 CPU · 메모리, 앱 작업 폴더가 있는 디스크를 잰다.
+ * own = 앱 연결 전이라 딸깍이 자기가 도는 곳을 잰 값(hostHealth, -256). 끊겨도 설명은 남긴다
+ */
+export function gaugeSubs(health: Home['health'], own = false) {
+  const where = own ? '딸깍 서버' : '시스템 전체'
+  const disk = own ? '딸깍 작업 폴더 디스크' : '앱 작업 폴더 디스크'
+  if (!health) return [where, where, disk]
   return [
-    '시스템 전체',
-    `${gb(health.mem.usedMb)} / ${gb(health.mem.totalMb)} GB · 시스템 전체`,
-    `${health.disk.usedGb} / ${health.disk.totalGb} GB · 앱 작업 폴더 디스크`,
+    where,
+    `${gb(health.mem.usedMb)} / ${gb(health.mem.totalMb)} GB · ${where}`,
+    `${health.disk.usedGb} / ${health.disk.totalGb} GB · ${disk}`,
   ]
 }
 
@@ -91,8 +102,51 @@ export function runChip(service: Home['service'], run: Home['run'], lastRunId: s
   return { label: '검사 전', href: null, state: 'none' }
 }
 
-/** LED 옆 문구. 연결된 적 없는 서비스는 앱이 꺼졌는지 몰라 "연결 끊김"만 */
-export function serverState(service: Home['service']) {
-  if (service?.connected) return { ok: true, text: '정상' }
-  return { ok: false, text: service ? '연결 끊김 · 앱이 꺼져 있어요' : '연결 끊김' }
+/** LED 옆 문구. 앱을 연결하기 전(service null)은 끊김이 아니라 "앱 연결 전" — 회색(idle)이고 게이지는 딸깍 서버 값 (-256) */
+export function serverState(service: Home['service']): { ok: boolean; idle?: true; text: string } {
+  if (!service) return { ok: false, idle: true, text: '앱 연결 전 · 딸깍 서버 기준' }
+  if (service.connected) return { ok: true, text: '정상' }
+  return { ok: false, text: '연결 끊김 · 앱이 꺼져 있어요' }
+}
+
+/**
+ * 새 버전 띠 (F-HOME-06, -221). 새 버전이 없거나(소스 빌드 · 최신 · GitHub 확인 실패) 아직 못 받았으면 null.
+ * 설치기로 깐 딸깍은 업데이트 버튼 — 검사 중이면 막는다(다시 띄우면 검사가 끊김). Compose로 띄운 출시 이미지는 버튼 대신 명령
+ */
+export function updateBanner(u: UpdateStatus | undefined, running: boolean) {
+  if (!u?.latest) return null
+  const text = `새 버전 v${u.latest}가 나왔어요 · 지금 v${u.current}`
+  if (!u.canUpdate) {
+    return { text, button: false, disabled: false, hint: `docker-compose.yml의 이미지 태그를 ${u.latest}로 바꾸고`, command: 'docker compose pull && docker compose up -d' }
+  }
+  return { text, button: true, disabled: running, hint: running ? '검사가 끝나면 업데이트할 수 있어요' : null, command: null }
+}
+
+/** 업데이트 버튼 뒤 이만큼 지나도 이 서버면 설치기가 멈춘 것 — 설치기는 ai 1분 + 서버 2분까지 기다린다 (server/start.sh) */
+export const UPDATE_STUCK_MS = 5 * 60_000
+
+// 업데이트를 누른 상태는 화면이 아니라 이 모듈에 둔다 — 홈을 떠났다 와도, 상단 탭 · 재검사에서도 같은 값을 본다 (!165 리뷰 2-1).
+// null = 안 누름, startedAt null = POST 기다림(새 이미지를 받는 중), 숫자 = 202를 받은 시각
+let update: { startedAt: number | null } | null = null
+export const updateFlow = {
+  start: () => void (update = { startedAt: null }),
+  started: (now = Date.now()) => void (update = { startedAt: now }),
+  fail: () => void (update = null),
+}
+
+/** starting 준비 중 · started 서버가 바뀌기를 기다림 · stuck 5분이 지나도 그대로(설치기가 멈춤) · null 안 누름 */
+export function updatePhase(now = Date.now()): 'starting' | 'started' | 'stuck' | null {
+  if (!update) return null
+  if (update.startedAt === null) return 'starting'
+  return now - update.startedAt < UPDATE_STUCK_MS ? 'started' : 'stuck'
+}
+
+/** stuck까지 남은 시간 — started가 아니면 null */
+export const updateStuckIn = (now = Date.now()) =>
+  update?.startedAt == null ? null : Math.max(0, update.startedAt + UPDATE_STUCK_MS - now)
+
+/** 서버가 바뀌기 전 검사 시작은 막는다 — 그 사이 시작한 검사는 서버가 바뀌며 끊긴다. 멈췄으면(stuck) 옛 서버가 그대로라 푼다 */
+export const updateBlocksScan = (now = Date.now()) => {
+  const p = updatePhase(now)
+  return p === 'starting' || p === 'started'
 }

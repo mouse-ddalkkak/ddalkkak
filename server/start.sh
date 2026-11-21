@@ -4,6 +4,7 @@
 # - 없으면 설치기다(README "설치", S15P31A107-207). docker.sock 으로 환경을 보고 ddalkkak-postgres · ddalkkak-ai(같은 버전) ·
 #   ddalkkak(이 이미지, DB_URL 을 넣어 Spring 으로) 를 띄운 뒤 주소 · 첫 비밀번호를 보여 주고 끝난다.
 #   다시 돌리면(업그레이드) 같은 이미지로 돌고 있는 컨테이너는 그대로 두고 바뀐 것만 새로 띄운다. 인자 uninstall 은 모두 지운다
+#   인자 update 는 화면 업데이트 버튼이 새 버전 이미지로 띄운다 — 지금 설치의 설정을 읽어 그대로 업그레이드한다 (-221)
 #   호스트 7777 을 못 쓰면 7778 부터 빈 포트를 고르고, 다시 돌리면 그 포트를 그대로 쓴다. 인자 --sample 은 샘플 order-api 도 띄운다 (-227)
 set -eu
 
@@ -15,17 +16,33 @@ die() { printf '%s\n' "$*" >&2; exit 1; }
 docker version >/dev/null 2>&1 || die "docker 에 붙지 못했다 — 설치 명령에 -v /var/run/docker.sock:/var/run/docker.sock 을 넣는다 (README 설치)"
 
 if [ "${1:-}" = uninstall ]; then
-	docker rm -f ddalkkak ddalkkak-sample ddalkkak-ai ddalkkak-postgres ddalkkak-sample-postgres >/dev/null 2>&1 || true
+	# ddalkkak-update: 화면 업데이트가 띄운 설치기 — 실패 이유를 docker logs 로 보라고 --rm 없이 남는다 (!165 리뷰 1-1)
+	docker rm -f ddalkkak ddalkkak-sample ddalkkak-ai ddalkkak-postgres ddalkkak-sample-postgres ddalkkak-update >/dev/null 2>&1 || true
 	# 검사 중이었으면 도구(k6 · ZAP · Semgrep)가 남아 고객 앱을 계속 때린다. 서버를 먼저 지워 새로 띄우지 못하게 한 뒤 라벨로 지운다 (-197)
 	docker ps -aq --filter label=io.ddalkkak.tool | xargs -r docker rm -f >/dev/null 2>&1 || true
 	docker network rm ddalkkak >/dev/null 2>&1 || true
 	docker volume rm ddalkkak-data ddalkkak-pgdata >/dev/null 2>&1 || true
-	say "딸깍을 지웠다 (컨테이너 ddalkkak · ddalkkak-ai · ddalkkak-postgres · 샘플 앱 · 검사 도구, 볼륨 ddalkkak-data · ddalkkak-pgdata, 네트워크 ddalkkak)"
+	say "딸깍을 지웠다 (컨테이너 ddalkkak · ddalkkak-ai · ddalkkak-postgres · 샘플 앱 · 검사 도구 · 업데이트 설치기,볼륨 ddalkkak-data · ddalkkak-pgdata, 네트워크 ddalkkak)"
 	exit 0
 fi
 
 : "${DDALKKAK_VERSION:?소스 빌드 이미지는 docker compose up -d --build 로 띄운다 (README 소스에서 띄우기)}"
 SELF="$(cat /etc/hostname)"
+HOME_FROM="$SELF" # 홈 폴더 mount 를 읽을 컨테이너
+
+# update: 화면의 업데이트 버튼(-221)이 새 버전 이미지로 띄운다. 설치 명령의 -e · 홈 -v 없이 docker.sock 만 붙어 오니
+# 지금 설치(ddalkkak · ddalkkak-ai 컨테이너)의 방식 · 홈 폴더 · AI 허용 주소 · host 의 AI · DB 포트를 읽어 아래 설치를 그대로 탄다
+if [ "${1:-}" = update ]; then
+	cfg="$(docker inspect -f '{{index .Config.Labels "ddalkkak.config"}}' ddalkkak 2>/dev/null)" ||
+		die "설치된 딸깍이 없다 — README 설치 명령으로 설치한다"
+	env_of() { docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' "$1" 2>/dev/null | sed -n "s/^$2=//p" | head -n 1; }
+	DDALKKAK_MODE="${DDALKKAK_MODE:-${cfg%% *}}"
+	HOST_HOME="${HOST_HOME:-$(env_of ddalkkak HOST_HOME)}"
+	AI_ALLOWED_HOSTS="${AI_ALLOWED_HOSTS:-$(env_of ddalkkak-ai AI_ALLOWED_HOSTS)}"
+	AI_PORT="${AI_PORT:-$(env_of ddalkkak AI_BASE_URL | sed -n 's|^http://localhost:\([0-9]*\)$|\1|p')}"
+	DB_PORT="${DB_PORT:-$(env_of ddalkkak DB_URL | sed -n 's|^jdbc:postgresql://localhost:\([0-9]*\)/.*|\1|p')}"
+	HOME_FROM=ddalkkak
+fi
 IMAGE="$(docker inspect -f '{{.Image}}' "$SELF")" # 이 컨테이너와 같은 이미지(받아 둔 latest 든 버전 태그든)
 AI_IMAGE="${DDALKKAK_REGISTRY:-ghcr.io/mouse-ddalkkak}/ddalkkak-ai:$DDALKKAK_VERSION"
 DB_IMAGE=postgres:17-alpine
@@ -82,7 +99,7 @@ else
 fi
 
 # 홈: 설치 명령이 -v "${HOME}:/host-home:ro" 로 붙였으면 그 원본 경로를 서버에도 붙인다("내 컴퓨터" · jar 경로)
-HOME_SRC="$(docker inspect -f '{{range .Mounts}}{{if eq .Destination "/host-home"}}{{.Source}}{{end}}{{end}}' "$SELF")"
+HOME_SRC="$(docker inspect -f '{{range .Mounts}}{{if eq .Destination "/host-home"}}{{.Source}}{{end}}{{end}}' "$HOME_FROM")"
 
 docker volume create ddalkkak-data >/dev/null
 docker volume create ddalkkak-pgdata >/dev/null
@@ -212,7 +229,8 @@ if running ddalkkak "$IMAGE" "$SERVER_CONFIG"; then
 fi
 docker rm -f ddalkkak >/dev/null 2>&1 || true
 # HOST_PORT: 이 컴퓨터에서 여는 포트. desktop 은 컨테이너 안이 늘 7777 이라 서버가 모른다 — 0-3 이 DDALKKAK_URL 안내에 쓴다
-set -- -e "SERVER_PORT=$INNER_PORT" -e "HOST_PORT=$SERVER_PORT" -e "DB_USERNAME=ddalkkak" -e "DB_PASSWORD=$DB_PASSWORD" -e "DATA_HOST_DIR=$DATA_HOST_DIR"
+# DDALKKAK_INSTALL: 설치기로 깐 서버 — 화면 업데이트 버튼은 이때만 이 설치기의 update 를 띄운다(Compose 는 compose 가 컨테이너를 맡는다, -221)
+set -- -e "SERVER_PORT=$INNER_PORT" -e "HOST_PORT=$SERVER_PORT" -e "DB_USERNAME=ddalkkak" -e "DB_PASSWORD=$DB_PASSWORD" -e "DATA_HOST_DIR=$DATA_HOST_DIR" -e DDALKKAK_INSTALL=docker-run
 for kv in $SERVER_ENV; do set -- "$@" -e "$kv"; done
 if [ -n "$HOME_SRC" ]; then set -- "$@" -v "$HOME_SRC:/host-home:ro" -e "HOST_HOME=${HOST_HOME:-}" -e HOME_MOUNT=/host-home; fi
 # shellcheck disable=SC2086

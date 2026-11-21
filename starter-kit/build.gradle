@@ -73,6 +73,8 @@ dependencies {
 	testImplementation 'org.springframework.boot:spring-boot-starter-security'
 	testImplementation 'org.springframework.boot:spring-boot-starter-test'
 	testImplementation 'com.h2database:h2'
+	// 가입 본문 필수 칸 시험 (-251). 스타터킷 본체는 validation 을 컴파일에 넣지 않고 애너테이션 이름으로 본다
+	testImplementation 'jakarta.validation:jakarta.validation-api'
 	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 }
 

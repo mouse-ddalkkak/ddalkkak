@@ -3,6 +3,7 @@ package io.ddalkkak.starter;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import io.ddalkkak.ApiException;
 import io.ddalkkak.ErrorCode;
+import io.ddalkkak.Versions;
 import io.ddalkkak.run.RunLookup;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -44,6 +45,12 @@ public class ServiceRegistry {
 	/** 이 시간 동안 생존 신호가 없으면 연결 끊김 (F-CONN-06) */
 	static final Duration ALIVE = Duration.ofSeconds(30);
 
+	/** 토큰을 아는 첫 스타터킷 (-211). 이보다 옛 출시본은 허용하지 않고 화면이 올리라고 안내한다 (-221) */
+	static final String STARTER_MIN = "1.1.0";
+
+	/** 생존 신호가 이만큼 없으면 연결 점검과 따로 해제 안내 (-250) — 검사 중엔 점검을 건너뛰고, 같은 포트에 다른 앱이 뜨면 점검은 성공해서다 */
+	static final Duration SILENT_CONFIRM = Duration.ofSeconds(90);
+
 	/**
 	 * @param runningCommit 실행 중인 앱의 커밋 (git.properties 가 없으면 null → 버전 비교 없이 진행)
 	 * @param connected 최근 30초 안에 생존 신호가 왔는지
@@ -83,9 +90,9 @@ public class ServiceRegistry {
 	record Command(String type, String snapshotId, String runId, Integer intervalSec) {
 	}
 
-	/** 화면 0-3 연결 요청 카드 (약속 ④ ConnectRequest) */
+	/** 화면 0-3 연결 요청 카드 (약속 ④ ConnectRequest). starterOutdated 면 허용 대신 스타터킷을 올리라는 안내 (-221) */
 	record ConnectRequest(String id, String appName, String framework, String frameworkVersion, String host, int port,
-			Integer pid, String javaVersion, String buildTool, OffsetDateTime requestedAt) {
+			Integer pid, String javaVersion, String buildTool, OffsetDateTime requestedAt, boolean starterOutdated) {
 	}
 
 	/** 메모리의 연결 요청. status pending · ignored · approved */
@@ -104,6 +111,9 @@ public class ServiceRegistry {
 		Instant seenAt;
 
 		Health health;
+
+		/** 무시된 뒤 받은 신호 수. 옛 키트(v1.2.2까지)는 ignored 응답을 받는 한 번 뒤 멈춘다 — 2 이상이면 신호를 계속 보내는 새 키트 (!155 리뷰) */
+		int beatsSinceIgnored;
 
 		/** 허용 때 발급한 토큰 원문. 앱이 이 토큰을 실은 신호를 보낼 때까지만 둔다 (그때까지 생존 신호 응답에 다시 싣는다) */
 		String token;
@@ -196,6 +206,15 @@ public class ServiceRegistry {
 
 	synchronized boolean alive(Long serviceId) {
 		return alive(beats.get(serviceId));
+	}
+
+	/**
+	 * 신호를 받은 적 있는 서비스가 {@link #SILENT_CONFIRM} 넘게 조용한지 (-250). 딸깍이 다시 켜져 아직 신호를 하나도 못 받았으면 false — 앱보다
+	 * 딸깍이 먼저 뜬 것만으로 해제를 묻지 않게
+	 */
+	synchronized boolean silent(Long serviceId) {
+		Beat beat = beats.get(serviceId);
+		return beat != null && !beat.at.plus(SILENT_CONFIRM).isAfter(clock.instant());
 	}
 
 	synchronized void command(Long serviceId, String key, Command command) {
@@ -302,21 +321,43 @@ public class ServiceRegistry {
 		}
 		request.seenAt = clock.instant();
 		request.health = health;
+		if ("ignored".equals(request.status)) {
+			request.beatsSinceIgnored++;
+		}
 		body.put("status", request.status);
 		body.put("serviceId", null);
 		body.put("commands", List.of());
 		return body;
 	}
 
-	/** GET /api/services/requests. 대기 중인 요청, 최근 것부터. 30초 동안 신호가 없는 요청(다시 켜져 hello 를 새로 보낸 앱의 옛 요청)은 뺀다 */
-	synchronized List<ConnectRequest> pending() {
+	/**
+	 * GET /api/services/requests. 대기 중인 요청, 최근 것부터. 30초 동안 신호가 없는 요청(다시 켜져 hello 를 새로 보낸 앱의 옛 요청)은 뺀다.
+	 * again(0-3 ② "다시 찾기")이면 무시한 요청도 30초 안에 신호가 있으면 다시 대기로 — 스타터킷은 무시돼도 같은 요청으로 신호를 보낸다 (-251).
+	 * 무시 뒤 신호가 두 번 이상 온 것만 — 옛 키트(v1.2.2까지)는 한 번 뒤 멈춰 되살려 허용하면 토큰을 받아 갈 신호가 없다 (!155 리뷰)
+	 */
+	synchronized List<ConnectRequest> pending(boolean again) {
 		Instant since = clock.instant().minus(ALIVE);
+		if (again) {
+			requests.values().stream().filter(r -> "ignored".equals(r.status) && r.beatsSinceIgnored >= 2 && r.seenAt.isAfter(since))
+				.forEach(r -> r.status = "pending");
+		}
 		return requests.values().stream()
 			.filter(r -> "pending".equals(r.status) && r.seenAt.isAfter(since))
 			.sorted(Comparator.comparing((Request r) -> r.requestedAt).reversed())
 			.map(r -> new ConnectRequest(r.id, r.hello.appName(), r.hello.framework(), r.hello.frameworkVersion(), r.hello.host(),
-					r.hello.port(), r.hello.pid(), r.hello.javaVersion(), r.hello.buildTool(), kst(r.requestedAt)))
+					r.hello.port(), r.hello.pid(), r.hello.javaVersion(), r.hello.buildTool(), kst(r.requestedAt),
+					outdated(r.hello.starterVersion())))
 			.toList();
+	}
+
+	/** 허용된 서비스의 스타터킷이 옛 버전인가 — 업그레이드 전에 허용한 앱은 토큰이 없어 401 만 받는다. 홈이 올리라고 안내한다 (-221) */
+	boolean starterOutdated(Long serviceId) {
+		return services.findById(serviceId).map(row -> outdated(row.starterVersion)).orElse(false);
+	}
+
+	/** 출시본이고 {@link #STARTER_MIN}보다 옛 버전. 직접 빌드한 키트(dev · 0.1.0-SNAPSHOT)는 막지 않는다 */
+	static boolean outdated(String starterVersion) {
+		return Versions.older(starterVersion, STARTER_MIN);
 	}
 
 	/**
@@ -328,6 +369,9 @@ public class ServiceRegistry {
 	synchronized ServiceRow approve(String requestId) {
 		Request request = pendingRequest(requestId);
 		Hello hello = request.hello;
+		if (outdated(hello.starterVersion())) {
+			throw new ApiException(ErrorCode.STARTER_OUTDATED);
+		}
 		ServiceRow row = services.findFirstByNameAndHostAndPort(hello.appName(), hello.host(), hello.port()).orElse(null);
 		if (row == null ? services.existsByDisconnectedAtIsNull() : services.existsByDisconnectedAtIsNullAndIdNot(row.id)) {
 			throw new ApiException(ErrorCode.ALREADY_CONNECTED);
@@ -372,9 +416,11 @@ public class ServiceRegistry {
 		requests.values().removeIf(r -> row.id.equals(r.serviceId));
 	}
 
-	/** POST /api/services/requests/{id}/ignore. 저장하지 않는다. 앱이 다시 켜져 hello 하면 다시 대기 */
+	/** POST /api/services/requests/{id}/ignore. 저장하지 않는다. "다시 찾기"(pending again) · 앱이 다시 켜져 hello 하면 다시 대기 */
 	synchronized void ignore(String requestId) {
-		pendingRequest(requestId).status = "ignored";
+		Request request = pendingRequest(requestId);
+		request.status = "ignored";
+		request.beatsSinceIgnored = 0;
 	}
 
 	private Request pendingRequest(String requestId) {

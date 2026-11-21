@@ -398,8 +398,15 @@ class AuthzCheck {
 		return new Verdict(checkedIds.size(), leakedIds.size(), null, leaked, listLeaked.isEmpty() ? null : "GET " + list);
 	}
 
-	/** 목록 응답의 항목들: 배열, 또는 content · items · data · results 아래 배열. 200 이 아니거나 JSON 이 아니면 빈 목록 */
 	private List<JsonNode> items(HttpResponse<String> response) {
+		return items(json, response);
+	}
+
+	/**
+	 * 목록 응답의 항목들: 배열, 또는 content · items · data · results 아래 배열. 200 이 아니거나 JSON 이 아니면 빈 목록. 경로 변수 값 찾기
+	 * ({@link PathValues}, -262)도 같은 규칙으로 읽는다
+	 */
+	static List<JsonNode> items(JsonMapper json, HttpResponse<String> response) {
 		List<JsonNode> items = new ArrayList<>();
 		if (response.statusCode() != 200) {
 			return items;

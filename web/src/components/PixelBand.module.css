@@ -1,10 +1,2 @@
-.band{position:relative;height:var(--band-h);flex:none}
-.top{z-index:1}
-.bottom{z-index:2}
-.ground,.sky{position:absolute;inset:0}
-.ground{background:var(--ink-700)}
-.sky{background-color:var(--band-700);background-image:var(--bg-band-dots);background-size:var(--bg-band-dots-size);background-position:var(--bg-band-dots-pos)}
-.top .ground{clip-path:var(--clip-band-top-ground-fine)}
-.top .sky{clip-path:var(--clip-band-top-sky-fine)}
-.bottom .ground{clip-path:var(--clip-band-bottom-ground-fine)}
-.bottom .sky{clip-path:var(--clip-band-bottom-sky-fine)}
+.top{position:relative;z-index:1;height:4px;flex:none}
+.bottom{position:relative;z-index:2;height:var(--band-h);flex:none;background:url(../assets/img/footer-rocks-2.png) 0 0/auto 144px repeat-x;image-rendering:pixelated}

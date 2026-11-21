@@ -34,6 +34,10 @@ class Run {
 	@Column(nullable = false, length = 10)
 	String aiMode = "default";
 
+	/** 준비 때 AI(키)를 쓰기로 했는지 (-252). aiMode 는 응답 source 라 키를 실어도 재검사 · 호출 실패면 default 다 */
+	@Column(nullable = false)
+	boolean aiAsked;
+
 	LocalDateTime startedAt;
 
 	LocalDateTime finishedAt;

@@ -103,17 +103,17 @@ class CodeFetcher {
 
 	// ───────── 입력 확인 (POST 가 바로 한다) ─────────
 
-	/** https 저장소 주소 하나. 비밀번호가 든 주소 · 다른 scheme 은 INVALID_URL (토큰은 따로 받는다) */
+	/** https 저장소 주소 하나. 비밀번호가 든 주소 · 다른 scheme 은 CODE_URL_INVALID (토큰은 따로 받는다). AI 주소(http 도 받음)의 INVALID_URL 과 문구를 가른다 (-250) */
 	void checkUrl(String ref) {
 		try {
 			URI uri = new URI(ref.trim());
 			if (uri.getScheme() == null || !gitSchemes.contains(uri.getScheme().toLowerCase(Locale.ROOT)) || uri.getUserInfo() != null
 					|| (!"file".equalsIgnoreCase(uri.getScheme()) && (uri.getHost() == null || uri.getHost().isBlank()))) {
-				throw new ApiException(ErrorCode.INVALID_URL);
+				throw new ApiException(ErrorCode.CODE_URL_INVALID);
 			}
 		}
 		catch (java.net.URISyntaxException e) {
-			throw new ApiException(ErrorCode.INVALID_URL);
+			throw new ApiException(ErrorCode.CODE_URL_INVALID);
 		}
 	}
 
@@ -154,6 +154,7 @@ class CodeFetcher {
 		step.accept("cloning");
 		Map<String, String> env = new LinkedHashMap<>();
 		env.put("GIT_TERMINAL_PROMPT", "0");
+		env.put("LC_ALL", "C"); // 없는 브랜치를 영어 출력으로 가린다 (-250)
 		env.put("GIT_ALLOW_PROTOCOL", String.join(":", gitSchemes));
 		if (token != null) {
 			env.put("GIT_CONFIG_COUNT", "1");
@@ -170,7 +171,9 @@ class CodeFetcher {
 		Result clone = run(cmd, env, null, token);
 		if (clone.exit() != 0) {
 			log.warn("git clone 실패 {}: {}", ref, mask(clone.err(), token));
-			throw new Failure(ErrorCode.CODE_FETCH_FAILED);
+			// 저장소에는 닿았는데 브랜치가 없다 — 토큰 문제가 아니다. 비공개 저장소는 인증에서 먼저 막혀 여기 오지 않는다
+			boolean noBranch = branch != null && clone.err().contains("Remote branch") && clone.err().contains("not found");
+			throw new Failure(noBranch ? ErrorCode.CODE_BRANCH_NOT_FOUND : ErrorCode.CODE_FETCH_FAILED);
 		}
 		String actual = branch != null ? branch : git(dir, "rev-parse", "--abbrev-ref", "HEAD");
 		return new Fetched(commitOf(dir), commitAtOf(dir), actual, false, null);
@@ -336,12 +339,14 @@ class CodeFetcher {
 		try {
 			for (Enumeration<? extends ZipEntry> e = zip.entries(); e.hasMoreElements();) {
 				ZipEntry entry = e.nextElement();
-				String name = entry.getName();
+				// Windows PowerShell 5.1 Compress-Archive 는 src\main\ 처럼 역슬래시로 쓴다 — 바꾼 이름으로 폴더를 가린다 (-250).
+				// ZipEntry.isDirectory() 는 / 로 끝날 때만 참이라 그대로 두면 폴더가 빈 파일이 되고 그 아래 파일을 못 푼다
+				String name = entry.getName().replace('\\', '/');
 				if (!name.startsWith(prefix) || name.equals(prefix)) {
 					continue;
 				}
 				Path target = resolveEntry(base, name.substring(prefix.length()));
-				if (entry.isDirectory()) {
+				if (name.endsWith("/")) {
 					Files.createDirectories(target);
 					continue;
 				}

@@ -1,5 +1,5 @@
 /* 하단 바는 화면에 붙이지 않고 페이지 맨 아래에 둔다(-212). z-index 3은 하단 밴드(PixelBand .bottom 2) 위 — 띄운 메시지가 밴드에 가려지지 않게(!113 리뷰). 짧은 화면은 Layout .root min-height · main flex:1 로 창 맨 아래에 놓인다 */
-.footer{position:relative;z-index:3;flex:none;background-color:var(--band-700);background-image:var(--bg-band-dots);background-size:var(--bg-band-dots-size);background-position:var(--bg-band-dots-pos)}
+.footer{position:relative;z-index:3;flex:none;background:var(--rock-700) url(../assets/img/footer-rocks-2.png) 0 -64px/auto 144px repeat-x;image-rendering:pixelated}
 .inner{position:relative;width:100%;max-width:var(--page-max);margin:0 auto;padding:24px 40px 28px;height:80px;display:flex;align-items:center;gap:24px;font:400 17px/1 var(--font-display);letter-spacing:1.5px;color:var(--white)}
 .grow{flex:1}
 /* 메시지만 창 아래에 띄운다 — 긴 화면에서 스크롤 안 해도 보이게 (-139 · !113 리뷰). 오른쪽은 바 안 글자 자리(page-max 가운데 + 40px)에 맞춘다. 배경은 흰 글자 대비 4.5:1을 넘게 프레임보다 어두운 마젠타(-249 · !152 리뷰) */

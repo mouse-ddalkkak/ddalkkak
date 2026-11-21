@@ -57,7 +57,7 @@ export default function HomeNotice({ home }: { home: Home }) {
         </>
       }
     >
-      <span className={s.text}>30초마다 확인했는데 3번 연속 닿지 않았어요. 연결을 해제하면 다른 서비스를 연결할 수 있어요</span>
+      <span className={s.text}>생존 신호가 1분 30초 넘게 없거나, 30초마다 확인했는데 3번 연속 닿지 않았어요. 연결을 해제하면 다른 서비스를 연결할 수 있어요</span>
       {err && <span className={s.warn}>{err}</span>}
     </Dialog>
   )

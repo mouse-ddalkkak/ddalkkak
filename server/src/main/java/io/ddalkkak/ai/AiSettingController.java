@@ -10,6 +10,7 @@ import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.Set;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -67,6 +68,13 @@ class AiSettingController {
 		setting.lastCheckAt = LocalDateTime.now();
 		setting.lastCheckOk = true;
 		return view(settings.save(setting), input.key());
+	}
+
+	// 연결 해제 (-254). 지우면 다음 호출부터 키 헤더 없이 가고 검사 준비는 기본 범위로 간다. 설정이 없어도 200
+	@DeleteMapping
+	Setting delete() {
+		settings.deleteAllInBatch(); // 한 문장으로 지운다. deleteById 는 조회 뒤 지워 두 탭이 동시에 누르면 늦은 쪽이 500 이다
+		return NONE;
 	}
 
 	// 저장 전 값으로 확인한다. 실패해도 200, 이유는 AI 서버 문구 그대로

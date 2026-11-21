@@ -104,6 +104,10 @@ class RunPrepare {
 	private record AiAnswer(String source, List<Item> items) {
 	}
 
+	/** 3줄 AI 호출 중 "기본 범위로 바로 가기"가 쓸 요청. answer 가 있으면 AI 를 부르지 않고 그 답으로 끝낸다 */
+	private record Fallback(AiRequest request, AiAnswer answer) {
+	}
+
 	/** 준비 줄 하나가 실패해 회차를 failed 로 끝낸다. row = 실패한 줄(0부터) */
 	private static final class Failure extends RuntimeException {
 
@@ -145,6 +149,9 @@ class RunPrepare {
 		/** 키 실린 /ai/scenarios 호출에 보낸 요청 (그 답을 기다리는 중) */
 		private AiRequest pending;
 
+		/** 그 호출 중에 기본 범위로 가면 쓸 것. null 이면 pending 을 키만 빼고 다시 보낸다 (!161 리뷰 5-1) */
+		private Fallback fallback;
+
 		Progress(String scenarioDetail) {
 			for (int i = 0; i < rows.length; i++) {
 				rows[i] = new Row(NAMES[i], "waiting", i == 2 ? scenarioDetail : "");
@@ -178,8 +185,8 @@ class RunPrepare {
 			ready = true;
 		}
 
-		/** 기본 범위로 바로 가기. 끝났거나 AI 답을 저장하는 중이면 PREPARE_ENDED. 키 실린 호출의 답을 기다리는 중이면 결과를 이쪽이 쓰기로 하고 그 요청을 돌려준다 */
-		synchronized AiRequest requestDefault() {
+		/** 기본 범위로 바로 가기. 끝났거나 AI 답을 저장하는 중이면 PREPARE_ENDED. 키 실린 호출의 답을 기다리는 중이면 결과를 이쪽이 쓰기로 하고 쓸 요청을 돌려준다 */
+		synchronized Fallback requestDefault() {
 			// 키 실린 답이 먼저 와서 저장하는 중이어도 끝난 것으로 본다 (useDefault 뒤의 claimed 는 기본 범위 쪽)
 			if (ready || error != null || (claimed && !useDefault)) {
 				throw new ApiException(ErrorCode.PREPARE_ENDED);
@@ -189,17 +196,39 @@ class RunPrepare {
 				return null;
 			}
 			claimed = true;
-			return pending;
+			return fallback != null ? fallback : new Fallback(pending, null);
 		}
 
-		/** 3줄이 AI 를 부르기 직전. 이미 기본 범위로 가기로 했으면 true(키 없이 부른다), 아니면 키 실린 호출을 기다리는 중으로 남긴다 */
-		synchronized boolean defaultBeforeAsk(AiRequest request) {
+		/** 키 실린 호출 중에 기본 범위로 가면 pending 대신 쓸 것 — defaultBeforeAsk 전에 둔다 */
+		synchronized void fallback(Fallback plan) {
+			fallback = plan;
+		}
+
+		/** 사용자가 "기본 범위로 바로 가기"를 이미 눌렀는지 (-252). 3줄이 지난 항목을 그대로 쓸지 정하기 전에 본다 */
+		synchronized boolean defaultChosen() {
+			return useDefault;
+		}
+
+		/** 지난 항목을 그대로 쓰기로 하고 끝내기 직전 (-252, !161 리뷰 2). 그사이 "기본 범위로 바로 가기"가 왔으면 false — 그 클릭을 버리지 않는다. 아니면 이 준비가 끝낼 것으로 잡아 이후 클릭은 PREPARE_ENDED */
+		synchronized boolean reuseBeforeAsk() {
+			if (useDefault) {
+				return false;
+			}
+			claimed = true;
+			return true;
+		}
+
+		/**
+		 * 3줄이 AI 를 부르기 직전. 이미 기본 범위로 가기로 했으면 쓸 것(fallback 이 있으면 그것 — useAi 를 읽은 뒤 누른 클릭도 지난 선택을 이어 받게,
+		 * !161 리뷰 6-1), 아니면 키 실린 호출을 기다리는 중으로 남기고 null
+		 */
+		synchronized Fallback defaultBeforeAsk(AiRequest request) {
 			if (useDefault) {
 				claimed = true;
-				return true;
+				return fallback != null ? fallback : new Fallback(request, null);
 			}
 			pending = request;
-			return false;
+			return null;
 		}
 
 		/** 키 실린 호출의 답이 왔다. 그사이 기본 범위로 갔으면 false — 그 답은 버린다 */
@@ -326,10 +355,10 @@ class RunPrepare {
 		if (progress == null) {
 			throw new ApiException(ErrorCode.NOT_FOUND);
 		}
-		AiRequest request = progress.requestDefault();
-		if (request != null) {
+		Fallback plan = progress.requestDefault();
+		if (plan != null) {
 			try {
-				finishDefault(id, progress, ask(request, false));
+				finishDefault(id, progress, plan.request(), plan.answer() != null ? plan.answer() : ask(plan.request(), false));
 			}
 			catch (Failure e) {
 				fail(id, progress, e.row, e.code);
@@ -396,19 +425,29 @@ class RunPrepare {
 
 			// 3줄
 			boolean connected = ai.hasKey();
-			progress.aiMode(connected ? "llm" : "default");
+			// 이번에 AI 를 쓸지: 키가 있고 "기본 범위로 바로 가기"를 누르지 않았을 때. 이 값이 지난 회차 때 AI 를 쓰기로 했는지(ai_asked)와 다르면
+			// 지난 항목을 그대로 쓰지 않고 처음부터 다시 만든다 — 안 그러면 AI 를 지워도 지난 AI 카드가 나오고, AI 없이 첫 검사한 서비스는 키를 넣어도
+			// AI 카드가 안 생긴다 (-252). ai_mode 로 비교하지 않는다: 키를 실어 재검사(changed)를 부르거나 AI 호출이 실패해도 응답 source 는 default 다
+			boolean useAi = connected && !progress.defaultChosen();
+			progress.aiMode(useAi ? "llm" : "default");
+			update(runId, run -> run.aiAsked = useAi);
 			progress.start(2);
-			List<Item> past = last.isPresent() ? store.forApis(service.id()) : List.of();
+			boolean sameMode = last.isPresent() && last.get().aiAsked() == useAi;
+			List<Item> past = sameMode ? store.forApis(service.id()) : List.of();
 			AiRequest request = request(service, hasCode, endpoints, diff, past);
 			// 코드를 새로 연결했거나 끊었으면, 또는 코드가 있는데 지난 항목에 코드 품질이 없으면 바뀐 API 가 없어도 AI 를 부른다
 			// (AI 서버가 코드 품질 시나리오를 만들거나 뺀다, ai-server §2-4). 코드 품질 없이 저장된 서비스도 다음 재검사에서 다시 만든다.
 			// 지난 항목에 권한 점검이 없어 로그인 필요 {id} GET 을 더 실었을 때도 부른다 (-238)
-			boolean codeMissing = hasCode && past.stream().noneMatch(i -> "code".equals(i.area()));
-			boolean same = !past.isEmpty() && diff.added() == 0 && diff.removed() == 0 && diff.changed() == 0 && hasCode == last.get().hasCode()
-					&& !codeMissing;
+			boolean same = unchanged(past, diff, hasCode, last);
 			if (same && request.authzOnly() != null) {
 				// 권한 점검만 받으려고 부른다. AI 서버가 답하지 않으면 준비를 실패로 끝내지 않고 지난 항목 그대로 — 다음 재검사에서 다시 부른다 (!149 리뷰 2)
 				request = request.ifDown(new AiAnswer(last.get().aiMode(), past.stream().map(Item::asReused).toList()));
+			}
+			if (useAi && same && request.authzOnly() == null && !progress.reuseBeforeAsk()) {
+				// 지난 항목을 쓰려던 사이에 "기본 범위로 바로 가기"가 왔다: 지난 항목 없이 처음부터 키 없이 만든다. useAi 가 false 면 그 클릭은 이미
+				// 위 useAi 에 들어가 지난 회차와 같다고 본 것이니 지난 항목 그대로 (!161 리뷰 4-1)
+				request = request(service, hasCode, endpoints, diff, List.of());
+				same = false;
 			}
 			if (same && request.authzOnly() == null) {
 				// 바뀐 API 도 코드 변화도 없다: AI 를 부르지 않고 지난 시나리오를 그대로 쓴다. reused 표시가 있어야 save 가 지난 선택을 이어 받는다
@@ -418,8 +457,17 @@ class RunPrepare {
 				progress.row(2, "done", "바뀐 API 없음 · 지난 항목 그대로");
 				return;
 			}
-			if (progress.defaultBeforeAsk(request)) {
-				finishDefault(runId, progress, ask(request, false));
+			if (useAi && !sameMode && last.isPresent()) {
+				// 지난 회차는 AI 를 안 썼고 이번엔 쓰려고 지난 항목 없이 부른다. 그 호출 중에 기본 범위로 가면 이번에도 AI 를 안 쓴 것이라 지난 회차와
+				// 같다 — 1 · 2줄 중에 누른 것과 같게 지난 항목을 이어 받고, 바뀐 것이 없으면 AI 를 부르지 않는다 (!161 리뷰 5-1, B2 확인)
+				List<Item> kept = store.forApis(service.id());
+				AiRequest keep = request(service, hasCode, endpoints, diff, kept);
+				progress.fallback(new Fallback(keep, unchanged(kept, diff, hasCode, last) && keep.authzOnly() == null
+						? new AiAnswer(last.get().aiMode(), kept.stream().map(Item::asReused).toList()) : null));
+			}
+			Fallback plan = progress.defaultBeforeAsk(request);
+			if (plan != null) {
+				finishDefault(runId, progress, plan.request(), plan.answer() != null ? plan.answer() : ask(plan.request(), false));
 				return;
 			}
 			AiAnswer answer;
@@ -505,6 +553,12 @@ class RunPrepare {
 		return new AiRequest(new AiService(service.name(), service.framework()), hasCode, changed ? "changed" : "full", apis, previous, authzOnly, null);
 	}
 
+	/** 지난 항목을 그대로 써도 되는지: 지난 항목이 있고, 바뀐 API · 코드 연결 변화가 없고, 코드가 있는데 지난 항목에 코드 품질이 빠지지 않았다 */
+	private static boolean unchanged(List<Item> past, ApiDiff diff, boolean hasCode, Optional<RunLookup.Info> last) {
+		boolean codeMissing = hasCode && past.stream().noneMatch(i -> "code".equals(i.area()));
+		return !past.isEmpty() && diff.added() == 0 && diff.removed() == 0 && diff.changed() == 0 && hasCode == last.get().hasCode() && !codeMissing;
+	}
+
 	/** 재검사가 권한 점검으로 채우는 API: 로그인이 필요하고 경로 변수가 끝에 하나뿐인 GET (ai/plan/defaults.py `_id_gets` 중 `_needs_login`) */
 	private static boolean authzTarget(Endpoint e) {
 		return "GET".equals(e.method()) && e.authRequired() && ID_PATH.matcher(e.path()).matches();
@@ -588,7 +642,11 @@ class RunPrepare {
 	}
 
 	/** 기본 범위로 바로 가기의 끝: 3줄 "건너뜀 · 기본 범위 사용" */
-	private void finishDefault(long runId, Progress progress, AiAnswer answer) {
+	private void finishDefault(long runId, Progress progress, AiRequest request, AiAnswer answer) {
+		// 기본 범위로 갔다 — 다음 준비는 AI 를 쓰는 쪽과 다른 회차로 본다 (-252). 다만 기다리던 changed 요청(previous = 지난 AI 카드)을 키만 빼고 다시 보내면
+		// AI 서버가 지난 llm 카드를 이어 주니, 그때는 카드가 AI 것이라 true 로 둔다 (!161 리뷰 2)
+		boolean llmCards = request.previous() != null && request.previous().stream().anyMatch(i -> "llm".equals(i.source()));
+		update(runId, run -> run.aiAsked = llmCards);
 		finish(runId, "default", answer.items());
 		progress.aiMode("default");
 		progress.ready();

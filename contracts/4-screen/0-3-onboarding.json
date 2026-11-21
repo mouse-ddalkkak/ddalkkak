@@ -19,7 +19,23 @@
             "pid": 41822,
             "javaVersion": "17",
             "buildTool": "Gradle",
-            "requestedAt": "2026-10-31T10:02:11+09:00"
+            "requestedAt": "2026-10-31T10:02:11+09:00",
+            "starterOutdated": false
+          }
+        ],
+        "200 oldKit": [
+          {
+            "id": "req_7f2a",
+            "appName": "order-api",
+            "framework": "Spring Boot",
+            "frameworkVersion": "3.2.5",
+            "host": "localhost",
+            "port": 8080,
+            "pid": 41822,
+            "javaVersion": "17",
+            "buildTool": "Gradle",
+            "requestedAt": "2026-10-31T10:02:11+09:00",
+            "starterOutdated": true
           }
         ]
       }
@@ -38,9 +54,13 @@
           "code": "NOT_FOUND",
           "message": "찾을 수 없어요"
         },
-        "409": {
+        "409 connected": {
           "code": "ALREADY_CONNECTED",
           "message": "이미 연결된 서비스가 있어요"
+        },
+        "409 oldKit": {
+          "code": "STARTER_OUTDATED",
+          "message": "스타터킷을 새 버전으로 올려 주세요"
         }
       }
     },
@@ -121,6 +141,21 @@
         }
       }
     },
+    "DELETE /api/ai-settings": {
+      "summary": "AI 연결 해제 — 저장한 설정을 지운다 (AI 없음으로)",
+      "owner": [
+        "B2"
+      ],
+      "responses": {
+        "200": {
+          "provider": null,
+          "baseUrl": null,
+          "model": null,
+          "keyMasked": null,
+          "connected": false
+        }
+      }
+    },
     "POST /api/ai-settings/check": {
       "summary": "AI 연결 확인 → /ai/check",
       "owner": [
@@ -167,7 +202,8 @@
               "failures": 0,
               "needsConfirm": false,
               "lastCheckedAt": "2026-11-07T15:09:50+09:00"
-            }
+            },
+            "starterOutdated": false
           },
           "health": {
             "cpu": 0.23,
@@ -203,6 +239,7 @@
             "runId": null,
             "interruptedAt": null
           },
+          "hostHealth": null,
           "kitUrl": "http://localhost:7777"
         },
         "200 notConnected": {
@@ -210,6 +247,19 @@
           "health": null,
           "lastRun": null,
           "run": null,
+          "hostHealth": {
+            "cpu": 0.08,
+            "mem": {
+              "usedMb": 2150,
+              "totalMb": 7940
+            },
+            "disk": {
+              "usedGb": 41,
+              "totalGb": 233
+            },
+            "uptimeSec": 5400,
+            "serverTime": "2026-11-07T15:10:00+09:00"
+          },
           "kitUrl": "http://localhost:7777"
         },
         "200 otherPort": {
@@ -217,6 +267,19 @@
           "health": null,
           "lastRun": null,
           "run": null,
+          "hostHealth": {
+            "cpu": 0.08,
+            "mem": {
+              "usedMb": 2150,
+              "totalMb": 7940
+            },
+            "disk": {
+              "usedGb": 41,
+              "totalGb": 233
+            },
+            "uptimeSec": 5400,
+            "serverTime": "2026-11-07T15:10:00+09:00"
+          },
           "kitUrl": "http://localhost:7778"
         },
         "200 offline": {
@@ -231,7 +294,8 @@
               "failures": 1,
               "needsConfirm": false,
               "lastCheckedAt": "2026-11-07T15:09:50+09:00"
-            }
+            },
+            "starterOutdated": false
           },
           "health": null,
           "lastRun": null,
@@ -240,6 +304,7 @@
             "runId": null,
             "interruptedAt": null
           },
+          "hostHealth": null,
           "kitUrl": "http://localhost:7777"
         },
         "200 disconnectAsk": {
@@ -254,7 +319,8 @@
               "failures": 3,
               "needsConfirm": true,
               "lastCheckedAt": "2026-11-07T15:10:50+09:00"
-            }
+            },
+            "starterOutdated": false
           },
           "health": null,
           "lastRun": null,
@@ -263,6 +329,7 @@
             "runId": null,
             "interruptedAt": null
           },
+          "hostHealth": null,
           "kitUrl": "http://localhost:7777"
         },
         "200 runRunning": {
@@ -273,7 +340,8 @@
             "port": 8080,
             "connected": true,
             "apiCount": 14,
-            "disconnect": null
+            "disconnect": null,
+            "starterOutdated": false
           },
           "health": null,
           "lastRun": null,
@@ -282,6 +350,7 @@
             "runId": "run_6",
             "interruptedAt": null
           },
+          "hostHealth": null,
           "kitUrl": "http://localhost:7777"
         },
         "200 interrupted": {
@@ -292,7 +361,8 @@
             "port": 8080,
             "connected": true,
             "apiCount": 14,
-            "disconnect": null
+            "disconnect": null,
+            "starterOutdated": false
           },
           "health": null,
           "lastRun": {
@@ -319,6 +389,32 @@
               "name": "2 성능"
             }
           },
+          "hostHealth": null,
+          "kitUrl": "http://localhost:7777"
+        },
+        "200 oldKit": {
+          "service": {
+            "id": "svc_1",
+            "name": "order-api",
+            "host": "localhost",
+            "port": 8080,
+            "connected": true,
+            "apiCount": null,
+            "disconnect": {
+              "failures": 0,
+              "needsConfirm": false,
+              "lastCheckedAt": "2026-11-07T15:09:50+09:00"
+            },
+            "starterOutdated": true
+          },
+          "health": null,
+          "lastRun": null,
+          "run": {
+            "state": "none",
+            "runId": null,
+            "interruptedAt": null
+          },
+          "hostHealth": null,
           "kitUrl": "http://localhost:7777"
         },
         "200 runDone": {
@@ -329,7 +425,8 @@
             "port": 8080,
             "connected": true,
             "apiCount": 14,
-            "disconnect": null
+            "disconnect": null,
+            "starterOutdated": false
           },
           "health": null,
           "lastRun": {
@@ -353,6 +450,7 @@
             "runId": "run_5",
             "interruptedAt": null
           },
+          "hostHealth": null,
           "kitUrl": "http://localhost:7777"
         }
       }
@@ -454,8 +552,8 @@
           "jobId": "job_3"
         },
         "400": {
-          "code": "INVALID_URL",
-          "message": "주소를 확인해 주세요 · http(s)://…"
+          "code": "CODE_URL_INVALID",
+          "message": "저장소 주소를 확인해 주세요 · https://…"
         },
         "409": {
           "code": "SERVICE_OFFLINE",
@@ -539,6 +637,18 @@
           "error": {
             "code": "CODE_FETCH_FAILED",
             "message": "저장소에 접근할 수 없어요 · 토큰을 확인해 주세요"
+          }
+        },
+        "200 branchNotFound": {
+          "step": "failed",
+          "done": true,
+          "commit": null,
+          "runningCommit": "a3f9c1",
+          "sameVersion": null,
+          "decompiled": false,
+          "error": {
+            "code": "CODE_BRANCH_NOT_FOUND",
+            "message": "브랜치를 찾을 수 없어요 · 브랜치 이름을 확인해 주세요"
           }
         },
         "404": {

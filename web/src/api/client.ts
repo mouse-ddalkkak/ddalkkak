@@ -28,6 +28,8 @@ export type CallOptions = {
   form?: FormData
   /** 화면이 따로 처리할 오류 code — 하단 바에 띄우지 않고 던지기만 한다 */
   handle?: string[]
+  /** 오류 code를 하단 바에 띄우지 않고 던지기만 한다 — 화면이 `message`를 입력칸 · 버튼 옆에 남긴다 (-257). 401 이동 · 서버 꺼짐은 그대로 */
+  inline?: boolean
 }
 
 // 401이어도 0-2로 보내지 않는 곳 (설치 확인 · 로그인 자체)
@@ -95,6 +97,6 @@ export async function api<T>(method: string, path: string, opts: CallOptions = {
     handlers.onUnauthorized()
     throw e
   }
-  if (!opts.handle?.includes(e.code!)) handlers.showMessage(e.message)
+  if (!opts.inline && !opts.handle?.includes(e.code!)) handlers.showMessage(e.message)
   throw e
 }

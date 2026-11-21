@@ -2,6 +2,7 @@ import { useState } from 'react'
 import type { Area, ScopeItem } from '../../api/runs'
 import Button from '../../components/Button'
 import Input from '../../components/Input'
+import Select from '../../components/Select'
 import { AREA_NAME } from '../../utils/score'
 import Dialog from '../../components/Dialog'
 import AiForm from '../../components/AiForm'
@@ -30,12 +31,15 @@ export function EditDialog({
   item,
   ai,
   busy,
+  error,
   onClose,
   onApply,
 }: {
   item: ScopeItem
   ai: Params | null
   busy: boolean
+  /** 저장 400 문구 — 팝업 안에 남긴다 (-257) */
+  error: string | null
   onClose: () => void
   onApply: (params: Params, message: string) => void
 }) {
@@ -81,6 +85,11 @@ export function EditDialog({
             <Choice key={c.value} on={p[field] === c.value} onClick={() => set({ [field]: c.value })} label={c.label} sub={(c as { sub?: string }).sub} />
           ))}
         </div>
+        {error && (
+          <span className={s.error} role="alert">
+            {error}
+          </span>
+        )}
       </Dialog>
     )
   }
@@ -166,6 +175,11 @@ export function EditDialog({
         </div>
       </details>
       {note && <span className={s.sub}>{note}</span>}
+      {error && (
+        <span className={s.error} role="alert">
+          {error}
+        </span>
+      )}
       {/* 네이티브 <dialog>라 ✎ 팝업 위에 겹쳐 열리고, 닫아도 ✎ 팝업의 값은 그대로다 */}
       {aiOpen && (
         <Dialog title="AI 연결 · 선택" onClose={() => setAiOpen(false)}>
@@ -181,12 +195,14 @@ export function AddDialog({
   area,
   apis,
   busy,
+  error,
   onClose,
   onAdd,
 }: {
   area: Area
   apis: string[]
   busy: boolean
+  error: string | null
   onClose: () => void
   onAdd: (added: Added) => void
 }) {
@@ -215,16 +231,19 @@ export function AddDialog({
       </div>
       <div className={s.numField}>
         <span className={s.numLabel}>{code ? '대상 코드' : '대상 API'}</span>
-        <Input aria-label={code ? '대상 코드' : '대상 API'} value={target} onChange={(e) => setTarget(e.target.value)} placeholder={code ? '*Service.java' : area === 'perf' ? 'GET /api/products' : 'POST /api/coupons'} list={code ? undefined : 'scope-apis'} />
+        {code ? (
+          <Input aria-label="대상 코드" value={target} onChange={(e) => setTarget(e.target.value)} placeholder="*Service.java" />
+        ) : (
+          // 후보는 이번 API 목록, 자유 입력도 된다 (맞는지는 서버 NO_TARGET). 모델 셀렉트와 같은 목록 (-257)
+          <Select editable aria-label="대상 API" value={target} onChange={setTarget} options={apis.map((a) => ({ value: a, label: a }))} placeholder={area === 'perf' ? 'GET /api/products' : 'POST /api/coupons'} />
+        )}
       </div>
-      {!code && (
-        <datalist id="scope-apis">
-          {apis.map((a) => (
-            <option key={a} value={a} />
-          ))}
-        </datalist>
-      )}
       <span className={s.sub}>조건은 도구 기본값으로 시작해요. 추가한 뒤 ✎로 바꿀 수 있어요</span>
+      {error && (
+        <span className={s.error} role="alert">
+          {error}
+        </span>
+      )}
     </Dialog>
   )
 }

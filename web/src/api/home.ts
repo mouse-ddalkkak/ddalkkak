@@ -11,14 +11,11 @@ export type Home = {
     apiCount: number | null
     /** 연결 점검 연속 실패 (-223) */
     disconnect: { failures: number; needsConfirm: boolean; lastCheckedAt: string | null } | null
+    /** 업그레이드 전에 허용한 앱의 스타터킷이 1.1.0 전 출시본 — 토큰을 몰라 검사가 멈춘다. 홈 띠가 올리라고 안내 (-221) */
+    starterOutdated: boolean
   } | null
-  health: {
-    cpu: number
-    mem: { usedMb: number; totalMb: number }
-    disk: { usedGb: number; totalGb: number }
-    uptimeSec: number
-    serverTime: string
-  } | null
+  /** 스타터킷 생존 신호. 끊겼거나 연결 전이면 null */
+  health: Health | null
   lastRun: {
     runId: string
     at: string
@@ -36,6 +33,16 @@ export type Home = {
   } | null
   /** 같은 컴퓨터의 앱이 딸깍을 부를 주소. 7777이 아니면 0-3 ①이 DDALKKAK_URL로 안내 (-151) */
   kitUrl: string
+  /** 앱 연결 전(service null) 홈 서버 상태 — 딸깍이 도는 곳을 잰 값. 서비스가 있으면 null (-256) */
+  hostHealth: Health | null
+}
+
+export type Health = {
+  cpu: number
+  mem: { usedMb: number; totalMb: number }
+  disk: { usedGb: number; totalGb: number }
+  uptimeSec: number
+  serverTime: string
 }
 
 export const getHome = () => api<Home>('GET', '/api/home')
