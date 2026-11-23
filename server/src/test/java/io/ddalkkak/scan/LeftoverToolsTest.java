@@ -69,8 +69,10 @@ class LeftoverToolsTest {
 			args.add(l);
 		}
 		args.addAll(List.of("--entrypoint", "sleep", DockerTool.K6, "600"));
-		String id = docker(args.toArray(String[]::new));
-		assertThat(id).as("컨테이너를 띄우지 못함").doesNotStartWith("exit=");
+		String out = docker(args.toArray(String[]::new));
+		assertThat(out).as("컨테이너를 띄우지 못함").doesNotStartWith("exit=");
+		// 이미지가 없으면(CI 처럼 처음 받는 PC) 받기 진행 줄이 먼저 나온다 — 컨테이너 id 는 마지막 줄
+		String id = out.lines().reduce((a, b) -> b).orElseThrow();
 		started.add(id);
 		return id;
 	}
