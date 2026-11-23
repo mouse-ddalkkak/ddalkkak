@@ -1,0 +1,110 @@
+{
+  "source": "docs/openapi.yaml ① 예시에서 뽑음 · 고칠 때는 openapi.yaml을 고치고 python scripts/screen_contracts.py",
+  "calls": {
+    "POST /starter/v1/heartbeat": {
+      "summary": "생존 신호 — 10초마다",
+      "owner": [
+        "B2"
+      ],
+      "headers": {
+        "X-Ddalkkak-Token": {
+          "required": false,
+          "type": "string"
+        }
+      },
+      "request": {
+        "requestId": "req_7f2a",
+        "serviceId": "svc_1",
+        "cpu": 0.23,
+        "mem": {
+          "usedMb": 5018,
+          "totalMb": 8192
+        },
+        "disk": {
+          "usedGb": 38,
+          "totalGb": 80
+        },
+        "uptimeSec": 309600
+      },
+      "request pending": {
+        "requestId": "req_7f2a",
+        "serviceId": null,
+        "cpu": 0.21,
+        "mem": {
+          "usedMb": 4980,
+          "totalMb": 8192
+        },
+        "disk": {
+          "usedGb": 38,
+          "totalGb": 80
+        },
+        "uptimeSec": 40
+      },
+      "responses": {
+        "200": {
+          "status": "approved",
+          "serviceId": "svc_1",
+          "commands": [
+            {
+              "type": "SEND_APIS",
+              "snapshotId": "snap_12"
+            },
+            {
+              "type": "MEASURE_START",
+              "runId": "run_5",
+              "intervalSec": 1
+            }
+          ]
+        },
+        "200 pending": {
+          "status": "pending",
+          "serviceId": null,
+          "commands": []
+        },
+        "200 approvedToken": {
+          "status": "approved",
+          "serviceId": "svc_1",
+          "commands": [],
+          "token": "example-starter-token-not-real"
+        },
+        "200 sendApis": {
+          "status": "approved",
+          "serviceId": "svc_1",
+          "commands": [
+            {
+              "type": "SEND_APIS",
+              "snapshotId": "snap_12"
+            }
+          ]
+        },
+        "200 measureStop": {
+          "status": "approved",
+          "serviceId": "svc_1",
+          "commands": [
+            {
+              "type": "MEASURE_STOP",
+              "runId": "run_5"
+            }
+          ]
+        },
+        "200 ignored": {
+          "status": "ignored",
+          "serviceId": null,
+          "commands": []
+        },
+        "400": {
+          "code": "BAD_REQUEST",
+          "message": "요청 형식을 확인해 주세요"
+        },
+        "401": {
+          "code": "STARTER_TOKEN_INVALID",
+          "message": "스타터킷 토큰이 맞지 않아요"
+        },
+        "404": {
+          "code": "NOT_FOUND",
+          "message": "찾을 수 없어요"
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,16 @@
+# 비밀 검사 (S15P31A107-186). 전체 기록 검사:
+#   docker run --rm -v "$PWD:/repo:ro" zricethezav/gitleaks:v8.28.0 git /repo --log-opts=--all --redact -c /repo/.gitleaks.toml
+# 기본 규칙에 더해, 시험 · 예시에 일부러 넣은 가짜 값만 허용한다. 파일 경로는 허용하지 않는다(같은 파일에 진짜 키가 들어오면 잡힌다)
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "시험 · 예시용 가짜 값"
+regexes = [
+  '''^sk-test-0123456789$''',              # ai/tests 가짜 AI 키
+  '''^sk-test-SECRET-0123456789abcdef$''', # ai/tests 키 노출 시험
+  '''^kq7X-m2p9-Rtb4-Lw8s$''',             # openapi.yaml · contracts 0a/0b 예시 비밀번호
+  '''^ghp_SECRETabcdef123456$''',          # server CodeLocationTest 관련 코드 가림 시험 (-187)
+  '''^wJalrXUtnFEMIK7MDENG$''',            # server CodeLocationTest 가림 시험 — AWS 문서 예시 키 앞부분 (-187)
+  '''^Trial-pass-1234$''',                 # server K6AuthTrialTest 가짜 대상 앱 비밀번호
+]

@@ -1,0 +1,639 @@
+{
+  "source": "docs/openapi.yaml ② 예시에서 뽑음 · 고칠 때는 openapi.yaml을 고치고 python scripts/screen_contracts.py",
+  "calls": {
+    "POST /ai/scenarios": {
+      "summary": "시나리오 만들기",
+      "owner": [
+        "AI1"
+      ],
+      "headers": {
+        "X-AI-Provider": {
+          "required": false,
+          "enum": [
+            "claude",
+            "openai",
+            "custom"
+          ]
+        },
+        "X-AI-Base-Url": {
+          "required": false,
+          "type": "string"
+        },
+        "X-AI-Key": {
+          "required": false,
+          "type": "string"
+        },
+        "X-AI-Model": {
+          "required": false,
+          "type": "string"
+        }
+      },
+      "request full": {
+        "service": {
+          "name": "order-api",
+          "framework": "Spring Boot 3.2"
+        },
+        "hasCode": true,
+        "mode": "full",
+        "apis": [
+          {
+            "method": "GET",
+            "path": "/api/orders",
+            "params": [
+              {
+                "name": "q",
+                "in": "query",
+                "type": "string",
+                "required": false
+              }
+            ],
+            "auth": {
+              "required": true,
+              "role": "USER"
+            },
+            "handler": "OrderController#list",
+            "calls": 1820
+          },
+          {
+            "method": "GET",
+            "path": "/api/products",
+            "params": [],
+            "auth": {
+              "required": false,
+              "role": null
+            },
+            "handler": "ProductController#list",
+            "calls": 960
+          },
+          {
+            "method": "GET",
+            "path": "/api/orders/{id}",
+            "params": [
+              {
+                "name": "id",
+                "in": "path",
+                "type": "integer",
+                "required": true
+              }
+            ],
+            "auth": {
+              "required": true,
+              "role": "USER"
+            },
+            "handler": "OrderController#get",
+            "calls": 310
+          },
+          {
+            "method": "POST",
+            "path": "/api/orders",
+            "params": [
+              {
+                "name": "body",
+                "in": "body",
+                "type": "object",
+                "required": true
+              }
+            ],
+            "auth": {
+              "required": true,
+              "role": "USER"
+            },
+            "handler": "OrderController#create",
+            "calls": 120
+          }
+        ]
+      },
+      "request changed": {
+        "service": {
+          "name": "order-api",
+          "framework": "Spring Boot 3.2"
+        },
+        "hasCode": true,
+        "mode": "changed",
+        "apis": [
+          {
+            "method": "GET",
+            "path": "/api/orders",
+            "params": [
+              {
+                "name": "q",
+                "in": "query",
+                "type": "string",
+                "required": false
+              },
+              {
+                "name": "page",
+                "in": "query",
+                "type": "integer",
+                "required": false
+              }
+            ],
+            "auth": {
+              "required": true,
+              "role": "USER"
+            },
+            "handler": "OrderController#list",
+            "calls": 2150
+          }
+        ],
+        "previous": [
+          {
+            "key": "perf-1",
+            "area": "perf",
+            "tool": "k6",
+            "title": "주문 목록 피크",
+            "api": "GET /api/orders",
+            "why": "가장 많이 호출되는 API · 1,820번",
+            "params": {
+              "usersFrom": 50,
+              "usersTo": 200,
+              "durationMin": 3,
+              "shape": "ramp",
+              "failP95Ms": 500,
+              "failErrorRate": 0.01
+            },
+            "recommended": true,
+            "excluded": false,
+            "reused": false
+          },
+          {
+            "key": "perf-3",
+            "area": "perf",
+            "tool": "k6",
+            "title": "주문 상세 피크",
+            "api": "GET /api/orders/{id}",
+            "why": "세 번째로 많이 호출돼요",
+            "params": {
+              "usersFrom": 50,
+              "usersTo": 200,
+              "durationMin": 3,
+              "shape": "ramp",
+              "failP95Ms": 500,
+              "failErrorRate": 0.01
+            },
+            "recommended": true,
+            "excluded": false,
+            "reused": false
+          },
+          {
+            "key": "sec-1",
+            "area": "sec",
+            "tool": "ddalkkak",
+            "title": "테스트 계정 만들기",
+            "why": "로그인이 필요한 검사에 쓸 계정이에요",
+            "params": {
+              "count": 2
+            },
+            "recommended": true,
+            "excluded": false,
+            "reused": false
+          },
+          {
+            "key": "sec-2",
+            "area": "sec",
+            "tool": "zap",
+            "title": "입력값 인젝션",
+            "api": "GET /api/orders",
+            "why": "검색어가 쿼리에 들어가는 API예요",
+            "params": {
+              "range": "default"
+            },
+            "recommended": true,
+            "excluded": false,
+            "reused": false
+          },
+          {
+            "key": "code-1",
+            "area": "code",
+            "tool": "semgrep",
+            "title": "예외 처리",
+            "target": "전체",
+            "why": "빈 catch가 장애를 숨겨요",
+            "params": {
+              "severity": "major"
+            },
+            "recommended": true,
+            "excluded": false,
+            "reused": false
+          }
+        ]
+      },
+      "request noCode": {
+        "service": {
+          "name": "order-api",
+          "framework": "Spring Boot 3.2"
+        },
+        "hasCode": false,
+        "mode": "full",
+        "apis": [
+          {
+            "method": "GET",
+            "path": "/api/orders",
+            "params": [
+              {
+                "name": "q",
+                "in": "query",
+                "type": "string",
+                "required": false
+              }
+            ],
+            "auth": {
+              "required": true,
+              "role": "USER"
+            },
+            "handler": "OrderController#list",
+            "calls": 1820
+          }
+        ]
+      },
+      "responses": {
+        "200 llm": {
+          "source": "llm",
+          "items": [
+            {
+              "key": "perf-1",
+              "area": "perf",
+              "tool": "k6",
+              "title": "주문 목록 피크",
+              "api": "GET /api/orders",
+              "why": "가장 많이 호출되는 API · 1,820번",
+              "params": {
+                "usersFrom": 50,
+                "usersTo": 200,
+                "durationMin": 3,
+                "shape": "ramp",
+                "failP95Ms": 500,
+                "failErrorRate": 0.01
+              },
+              "recommended": true,
+              "excluded": false,
+              "reused": false
+            },
+            {
+              "key": "perf-4",
+              "area": "perf",
+              "tool": "k6",
+              "title": "상품 목록 대량",
+              "api": "GET /api/products",
+              "why": "응답이 캐시돼 부하 효과가 적어요",
+              "params": {
+                "usersFrom": 50,
+                "usersTo": 200,
+                "durationMin": 3,
+                "shape": "ramp",
+                "failP95Ms": 500,
+                "failErrorRate": 0.01
+              },
+              "recommended": false,
+              "excluded": true,
+              "excludeReason": "캐시됨",
+              "reused": false
+            },
+            {
+              "key": "sec-1",
+              "area": "sec",
+              "tool": "ddalkkak",
+              "title": "테스트 계정 만들기",
+              "why": "로그인이 필요한 검사에 쓸 계정이에요",
+              "params": {
+                "count": 2
+              },
+              "recommended": true,
+              "excluded": false,
+              "reused": false
+            },
+            {
+              "key": "sec-2",
+              "area": "sec",
+              "tool": "zap",
+              "title": "입력값 인젝션",
+              "api": "GET /api/orders",
+              "why": "검색어가 쿼리에 들어가는 API예요",
+              "params": {
+                "range": "wide"
+              },
+              "recommended": true,
+              "excluded": false,
+              "reused": false
+            },
+            {
+              "key": "sec-3",
+              "area": "sec",
+              "tool": "ddalkkak",
+              "title": "남의 주문 보기",
+              "api": "GET /api/orders/{id}",
+              "why": "id만으로 조회하는 API예요",
+              "params": {
+                "idCount": 20
+              },
+              "recommended": true,
+              "excluded": false,
+              "reused": false
+            },
+            {
+              "key": "code-2",
+              "area": "code",
+              "tool": "semgrep",
+              "title": "예외 처리",
+              "target": "전체",
+              "why": "빈 catch가 장애를 숨겨요",
+              "params": {
+                "severity": "major"
+              },
+              "recommended": true,
+              "excluded": false,
+              "reused": false
+            }
+          ],
+          "filtered": [
+            {
+              "api": "GET /api/legacy",
+              "reason": "목록에 없는 주소"
+            }
+          ],
+          "counts": {
+            "perf": 2,
+            "sec": 3,
+            "code": 1
+          }
+        },
+        "200 default": {
+          "source": "default",
+          "fallback": "no-key",
+          "items": [
+            {
+              "key": "perf-1",
+              "area": "perf",
+              "tool": "k6",
+              "title": "주문 목록 피크",
+              "api": "GET /api/orders",
+              "why": "가장 많이 호출되는 GET · 1,820번",
+              "params": {
+                "usersFrom": 50,
+                "usersTo": 200,
+                "durationMin": 3,
+                "shape": "ramp",
+                "failP95Ms": 500,
+                "failErrorRate": 0.01
+              },
+              "recommended": true,
+              "excluded": false,
+              "reused": false
+            },
+            {
+              "key": "perf-2",
+              "area": "perf",
+              "tool": "k6",
+              "title": "상품 목록 피크",
+              "api": "GET /api/products",
+              "why": "두 번째로 많이 호출되는 GET · 960번",
+              "params": {
+                "usersFrom": 50,
+                "usersTo": 200,
+                "durationMin": 3,
+                "shape": "ramp",
+                "failP95Ms": 500,
+                "failErrorRate": 0.01
+              },
+              "recommended": true,
+              "excluded": false,
+              "reused": false
+            },
+            {
+              "key": "perf-3",
+              "area": "perf",
+              "tool": "k6",
+              "title": "주문 상세 피크",
+              "api": "GET /api/orders/{id}",
+              "why": "세 번째로 많이 호출되는 GET · 310번",
+              "params": {
+                "usersFrom": 50,
+                "usersTo": 200,
+                "durationMin": 3,
+                "shape": "ramp",
+                "failP95Ms": 500,
+                "failErrorRate": 0.01
+              },
+              "recommended": true,
+              "excluded": false,
+              "reused": false
+            },
+            {
+              "key": "sec-1",
+              "area": "sec",
+              "tool": "ddalkkak",
+              "title": "테스트 계정 만들기",
+              "why": "로그인이 필요한 검사에 쓸 계정이에요",
+              "params": {
+                "count": 2
+              },
+              "recommended": true,
+              "excluded": false,
+              "reused": false
+            },
+            {
+              "key": "sec-2",
+              "area": "sec",
+              "tool": "ddalkkak",
+              "title": "남의 데이터 보기",
+              "api": "GET /api/orders/{id}",
+              "why": "주소의 id만 바꿔 남의 데이터가 보이는지 봐요",
+              "params": {
+                "idCount": 20
+              },
+              "recommended": true,
+              "excluded": false,
+              "reused": false
+            },
+            {
+              "key": "sec-3",
+              "area": "sec",
+              "tool": "zap",
+              "title": "기본 공격 범위",
+              "api": "GET /api/orders",
+              "why": "알려진 공격 패턴을 기본 범위로 시험해요",
+              "params": {
+                "range": "default"
+              },
+              "recommended": true,
+              "excluded": false,
+              "reused": false
+            },
+            {
+              "key": "code-1",
+              "area": "code",
+              "tool": "semgrep",
+              "title": "주요 코드 규칙",
+              "target": "전체",
+              "why": "주요 문제까지 살펴봐요",
+              "params": {
+                "severity": "major"
+              },
+              "recommended": true,
+              "excluded": false,
+              "reused": false
+            }
+          ],
+          "filtered": [],
+          "counts": {
+            "perf": 3,
+            "sec": 3,
+            "code": 1
+          }
+        },
+        "200 changed": {
+          "source": "llm",
+          "items": [
+            {
+              "key": "perf-1",
+              "area": "perf",
+              "tool": "k6",
+              "title": "주문 목록 피크",
+              "api": "GET /api/orders",
+              "why": "호출이 1,820번에서 2,150번으로 늘었어요",
+              "params": {
+                "usersFrom": 50,
+                "usersTo": 200,
+                "durationMin": 3,
+                "shape": "ramp",
+                "failP95Ms": 500,
+                "failErrorRate": 0.01
+              },
+              "recommended": true,
+              "excluded": false,
+              "reused": false
+            },
+            {
+              "key": "perf-3",
+              "area": "perf",
+              "tool": "k6",
+              "title": "주문 상세 피크",
+              "api": "GET /api/orders/{id}",
+              "why": "세 번째로 많이 호출돼요",
+              "params": {
+                "usersFrom": 50,
+                "usersTo": 200,
+                "durationMin": 3,
+                "shape": "ramp",
+                "failP95Ms": 500,
+                "failErrorRate": 0.01
+              },
+              "recommended": true,
+              "excluded": false,
+              "reused": true
+            },
+            {
+              "key": "sec-1",
+              "area": "sec",
+              "tool": "ddalkkak",
+              "title": "테스트 계정 만들기",
+              "why": "로그인이 필요한 검사에 쓸 계정이에요",
+              "params": {
+                "count": 2
+              },
+              "recommended": true,
+              "excluded": false,
+              "reused": true
+            },
+            {
+              "key": "sec-2",
+              "area": "sec",
+              "tool": "zap",
+              "title": "입력값 인젝션",
+              "api": "GET /api/orders",
+              "why": "새 page 값이 쿼리에 들어가요",
+              "params": {
+                "range": "default"
+              },
+              "recommended": true,
+              "excluded": false,
+              "reused": false
+            },
+            {
+              "key": "code-1",
+              "area": "code",
+              "tool": "semgrep",
+              "title": "예외 처리",
+              "target": "전체",
+              "why": "빈 catch가 장애를 숨겨요",
+              "params": {
+                "severity": "major"
+              },
+              "recommended": true,
+              "excluded": false,
+              "reused": true
+            }
+          ],
+          "filtered": [],
+          "counts": {
+            "perf": 2,
+            "sec": 2,
+            "code": 1
+          }
+        },
+        "200 noCode": {
+          "source": "default",
+          "fallback": "no-key",
+          "items": [
+            {
+              "key": "perf-1",
+              "area": "perf",
+              "tool": "k6",
+              "title": "주문 목록 피크",
+              "api": "GET /api/orders",
+              "why": "가장 많이 호출되는 GET · 1,820번",
+              "params": {
+                "usersFrom": 50,
+                "usersTo": 200,
+                "durationMin": 3,
+                "shape": "ramp",
+                "failP95Ms": 500,
+                "failErrorRate": 0.01
+              },
+              "recommended": true,
+              "excluded": false,
+              "reused": false
+            },
+            {
+              "key": "sec-1",
+              "area": "sec",
+              "tool": "ddalkkak",
+              "title": "테스트 계정 만들기",
+              "why": "로그인이 필요한 검사에 쓸 계정이에요",
+              "params": {
+                "count": 2
+              },
+              "recommended": true,
+              "excluded": false,
+              "reused": false
+            },
+            {
+              "key": "sec-2",
+              "area": "sec",
+              "tool": "zap",
+              "title": "기본 공격 범위",
+              "api": "GET /api/orders",
+              "why": "알려진 공격 패턴을 기본 범위로 시험해요",
+              "params": {
+                "range": "default"
+              },
+              "recommended": true,
+              "excluded": false,
+              "reused": false
+            }
+          ],
+          "filtered": [],
+          "counts": {
+            "perf": 1,
+            "sec": 2,
+            "code": 0
+          }
+        },
+        "400": {
+          "code": "BAD_REQUEST",
+          "message": "요청 형식을 확인해 주세요"
+        }
+      }
+    }
+  }
+}

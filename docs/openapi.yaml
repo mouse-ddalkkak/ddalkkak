@@ -1,0 +1,3386 @@
+openapi: 3.1.0
+info:
+  title: 딸깍 API
+  version: 0.1.0-draft
+  description: |
+    딸깍의 HTTP 약속 전부. **약속 상태** — ① ② ③ ④ 확정 (③은 S15P31A107-114). 요약·확정 담당은 [api.md](api.md).
+
+    | 약속 | 경로 | 부르는 쪽 → 답하는 쪽 |
+    | --- | --- | --- |
+    | ① 연결 · API 목록 · 측정값 | `/starter/v1/*` | 스타터킷 → Spring(받는 쪽 B2 · 스타터킷 B1) |
+    | ② 시나리오 | `/ai/check` `/ai/scenarios` | Spring(B2) → AI 서버(AI1) |
+    | ③ 결과 원본 → 점수·설명 | `/ai/reports` `/ai/prompts` | Spring(B2, 본문은 B3) → AI 서버(AI2) |
+    | ④ 화면에 필요한 데이터 | `/api/*` | 화면(B4) → Spring |
+
+    **공통 규칙**
+    - 화면은 `/api/*`만, `/starter/*`는 스타터킷만, `/ai/*`는 Spring만 부른다
+    - JSON은 camelCase. 시각은 ISO-8601(`+09:00`). 비율은 0–1 숫자
+    - 단위는 이름 끝에 붙인다: `Ms` `Sec` `Min` `Mb` `Gb`
+    - 경로의 `{id}`는 전부 **runId**다. `POST /api/runs/prepare`가 회차(run)를 만들고, 준비 → 범위 → 실행 → 결과가 같은 id를 쓴다
+    - 오류 응답은 전부 `{ "code": "RUN_IN_PROGRESS", "message": "이미 검사 중이에요" }`. `message`는 화면에 그대로 보여 줄 쉬운 말
+    - 세션 쿠키(HttpOnly). 0-1·0-2(`/api/setup*`, `/api/auth/login`) 외 `/api/*`는 로그인이 필요하다
+
+    **타임아웃** — 안쪽이 바깥보다 짧아야 AI 서버가 기본값으로 바꿔 답할 수 있다
+    - `/ai/check`: AI 서버 안 시험 호출 10초 / Spring 15초
+    - `/ai/scenarios` `/ai/reports`: AI 서버 안 LLM 60초 → 넘으면 기본 시나리오·기본 설명 / Spring 70초
+    - `/ai/prompts`: AI 서버 안 LLM 30초 → 넘으면 기본 틀 / Spring 40초
+
+    **x- 필드** — 담당·기능·주차·Jira를 한곳에서 대조하려고 붙인다
+    - `x-owner` 만드는 역할(B1 · B2 · B3 · B4 · AI1 · AI2)
+    - `x-features` [기능명세서](functional-spec.md) ID · `x-week` 화면에서 보이는 주차 · `x-jira` 스토리
+servers:
+  - url: http://localhost:7777
+    description: Spring 서버 (① ④)
+security:
+  - session: []
+tags:
+  - name: ① 스타터킷
+    description: '**[확정]** 연결 · API 목록 · 측정값. 스타터킷이 먼저 보내고 딸깍은 앱에 먼저 연락하지 않는다. 딸깍이 할 일은 생존 신호 응답의 `commands`에 싣는다. 예시는 `contracts/1-starter/` (`python scripts/screen_contracts.py`로 이 파일에서 뽑는다)'
+  - name: ② 시나리오
+    description: AI 서버(FastAPI)는 아무것도 저장하지 않는다. 키·주소·모델은 매 요청 헤더로 받고, 헤더가 없으면 기본 시나리오를 돌려준다
+  - name: ③ 결과·점수
+    description: 요청(검사 결과 원본) 모양은 B3, 응답(점수·설명)은 AI2. 점수는 규칙으로 계산하고 LLM은 설명·요청문만 쓴다. 원본에 없는 숫자는 설명에 쓰지 못한다
+  - name: ④ 화면
+    description: '**[확정]** 화면(B4)이 부르는 REST. 긴 작업은 "시작 → id → 진행 조회(또는 SSE)"로 통일. 화면별 예시는 `contracts/4-screen/` (`python scripts/screen_contracts.py`로 이 파일에서 뽑는다)'
+
+paths:
+  # ───────────────────────── ① 스타터킷 ─────────────────────────
+  /starter/v1/hello:
+    post:
+      tags: [① 스타터킷]
+      operationId: starterHello
+      summary: 연결 요청 — 앱이 켜질 때
+      description: 키·설정 파일 없이 같은 서버의 딸깍(:7777)을 찾아 보낸다. 실제 데이터 값은 보내지 않는다. 딸깍이 꺼져 있으면 30초마다 다시 시도하고 고객 앱 동작은 막지 않는다. 허용 전까지 요청은 딸깍 메모리에만 있다. 전에 받아 저장해 둔 토큰이 있으면 `X-Ddalkkak-Token`에 싣는다 — 그 서비스 토큰이 맞을 때만 approved, 없거나 틀리면 이름·host·port가 같아도 pending(사람이 다시 허용)
+      security: []
+      x-owner: [B2]
+      x-features: [F-CONN-02, F-CODE-05]
+      x-week: 1주
+      x-jira: [S15P31A107-118, S15P31A107-147, S15P31A107-181, S15P31A107-211, S15P31A107-224]
+      parameters:
+        - $ref: '#/components/parameters/StarterTokenOptional'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/HelloRequest' }
+      responses:
+        '200':
+          description: 대기 중인 연결 요청이 생김 (허용된 앱이 맞는 토큰을 실어 다시 켜지면 approved + serviceId)
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [requestId, status, serviceId]
+                properties:
+                  requestId: { type: string }
+                  status: { type: string, enum: [pending, approved] }
+                  serviceId: { type: [string, 'null'], description: approved일 때만 값 }
+                example: { requestId: req_7f2a, status: pending, serviceId: null }
+              examples:
+                approved: { summary: 허용된 앱이 저장한 토큰을 실어 다시 켜짐, value: { requestId: req_8b31, status: approved, serviceId: svc_1 } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+
+  /starter/v1/heartbeat:
+    post:
+      tags: [① 스타터킷]
+      operationId: starterHeartbeat
+      summary: 생존 신호 — 10초마다
+      description: |
+        딸깍은 저장하지 않고 최신 값만 메모리에 둔다(`cpu`만 성능 측정 근거로 최근 1시간, -248). 30초 동안 신호가 없으면 서비스 "연결 끊김". 응답의 `commands`로 할 일(API 목록 보내기 · 측정 시작/끝)을 전한다. `SEND_APIS`를 받고 20초 안에 목록이 안 오면 **같은 `snapshotId`로** 1번 더 싣는다. 스타터킷은 `/apis` 전송이 성공(2xx)한 `snapshotId`만 끝난 것으로 보고, 끝난 것이 다시 오면 무시한다.
+        딸깍이 다시 켜져 메모리의 연결 요청을 잃었으면 모르는 `requestId`라 404 → 스타터킷은 hello부터 다시 보낸다. 허용된 서비스는 `serviceId`가 DB에 있어 404가 나지 않는다.
+        **토큰** (-211): 허용되면 다음 응답에 `token`이 한 번 실린다(그 토큰을 실은 신호가 올 때까지는 매번). 스타터킷은 그것을 저장하고 이후 모든 ① 호출의 `X-Ddalkkak-Token`에 싣는다. 허용된 서비스로 오는 신호는 토큰이 맞아야 하고, 틀리면 401 → 스타터킷은 토큰을 지우고 hello부터(사람이 다시 허용). 대기 · 무시 요청은 `requestId`만으로 받는다
+      security: []
+      x-owner: [B2]
+      x-features: [F-CONN-06, F-API-02, F-RUN-02]
+      x-week: 1주 (MEASURE 명령 2주)
+      x-jira: [S15P31A107-118, S15P31A107-126, S15P31A107-135, S15P31A107-181, S15P31A107-211]
+      parameters:
+        - $ref: '#/components/parameters/StarterTokenOptional'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/HeartbeatRequest' }
+            examples:
+              pending: { summary: 허용 전, value: { requestId: req_7f2a, serviceId: null, cpu: 0.21, mem: { usedMb: 4980, totalMb: 8192 }, disk: { usedGb: 38, totalGb: 80 }, uptimeSec: 40 } }
+      responses:
+        '200':
+          description: 연결 상태와 할 일
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HeartbeatResponse' }
+              examples:
+                pending: { summary: 허용 기다리는 중, value: { status: pending, serviceId: null, commands: [] } }
+                approvedToken: { summary: 막 허용됨 · 토큰 한 번 (토큰 없이 requestId로 온 신호), value: { status: approved, serviceId: svc_1, commands: [], token: example-starter-token-not-real } }
+                sendApis: { summary: 허용됨 · API 목록 요청, value: { status: approved, serviceId: svc_1, commands: [{ type: SEND_APIS, snapshotId: snap_12 }] } }
+                measureStop: { summary: 검사 끝 · 측정 끝, value: { status: approved, serviceId: svc_1, commands: [{ type: MEASURE_STOP, runId: run_5 }] } }
+                ignored: { summary: 사용자가 "아니에요" → 같은 요청으로 신호를 계속 보낸다 · "다시 찾기"가 되살리면 다시 pending (-251), value: { status: ignored, serviceId: null, commands: [] } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/StarterTokenInvalid' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /starter/v1/apis:
+    post:
+      tags: [① 스타터킷]
+      operationId: starterApis
+      summary: API 목록 보내기 — SEND_APIS를 받았을 때
+      description: API마다 모양만 보낸다(실제 값 없음). B2가 api_snapshot·api_endpoint에 저장하고 지난번과 메서드+주소 기준으로 비교한다. 같은 `snapshotId`가 다시 오면(재전송) 다시 저장하지 않고 처음 결과를 그대로 돌려준다. 모르는 `serviceId`면 404, 토큰이 그 서비스 것이 아니면 401(저장하지 않는다)
+      security: []
+      x-owner: [B2]
+      x-features: [F-API-03, F-API-04]
+      x-week: 1주
+      x-jira: [S15P31A107-126, S15P31A107-181, S15P31A107-211, S15P31A107-240]
+      parameters:
+        - $ref: '#/components/parameters/StarterToken'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [serviceId, snapshotId, apis]
+              properties:
+                serviceId: { type: string }
+                snapshotId: { type: string, description: SEND_APIS 명령에 실려 온 값 그대로 }
+                apis:
+                  type: array
+                  items: { $ref: '#/components/schemas/ApiEndpoint' }
+            example:
+              serviceId: svc_1
+              snapshotId: snap_12
+              apis:
+                - method: GET
+                  path: '/api/orders/{id}'
+                  params: [{ name: id, in: path, type: integer, required: true }]
+                  auth: { required: true, role: USER }
+                  handler: 'OrderController#get'
+                  calls: 1820
+                - method: GET
+                  path: /api/orders
+                  params: [{ name: page, in: query, type: integer, required: false }, { name: status, in: query, type: string, required: false }]
+                  auth: { required: true, role: USER }
+                  handler: 'OrderController#list'
+                  calls: 5310
+                - method: POST
+                  path: /api/orders
+                  params: [{ name: body, in: body, type: object, required: true }]
+                  auth: { required: true, role: USER }
+                  handler: 'OrderController#create'
+                  calls: 412
+                - method: GET
+                  path: /api/products
+                  params: []
+                  auth: { required: false, role: null }
+                  handler: 'ProductController#list'
+                  calls: 9021
+      responses:
+        '200':
+          description: 저장 결과와 지난번 대비 변화 (첫 목록이면 added = count)
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [count, added, removed, changed]
+                properties:
+                  count: { type: integer }
+                  added: { type: integer }
+                  removed: { type: integer }
+                  changed: { type: integer }
+              example: { count: 14, added: 1, removed: 0, changed: 0 }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/StarterTokenInvalid' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /starter/v1/measures:
+    post:
+      tags: [① 스타터킷]
+      operationId: starterMeasures
+      summary: 앱 안쪽 측정값 — 측정 중 1초마다
+      description: 바깥 도구로는 알 수 없는 값. MEASURE_START ~ MEASURE_STOP 사이 `intervalSec`마다 보낸다. 한 번에 그 1초의 API별 샘플을 담는다(그 1초에 요청이 없던 API는 뺀다). B2가 받아 B3 콜백(`Measurements`)으로 넘기고 B3가 measure_sample에 저장한다. 모르는 `serviceId`면 404, 토큰이 그 서비스 것이 아니면 401(넘기지 않는다)
+      security: []
+      x-owner: [B2]
+      x-features: [F-RUN-08]
+      x-week: 2주
+      x-jira: [S15P31A107-135, S15P31A107-181, S15P31A107-211]
+      parameters:
+        - $ref: '#/components/parameters/StarterToken'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [serviceId, runId, samples]
+              properties:
+                serviceId: { type: string }
+                runId: { type: string, description: MEASURE_START 명령에 실려 온 값 그대로 }
+                samples:
+                  type: array
+                  items: { $ref: '#/components/schemas/MeasureSample' }
+              example:
+                serviceId: svc_1
+                runId: run_5
+                samples:
+                  - ts: '2026-11-07T14:39:01+09:00'
+                    api: GET /api/orders
+                    requests: 52
+                    dbQueriesPerRequest: 1240
+                    dbWaitMs: 38
+                    pool: { active: 20, max: 20, waiting: 148 }
+                  - ts: '2026-11-07T14:39:01+09:00'
+                    api: 'GET /api/orders/{id}'
+                    requests: 31
+                    dbQueriesPerRequest: 3
+                    dbWaitMs: 12
+                    pool: { active: 20, max: 20, waiting: 148 }
+            examples:
+              unmeasured:
+                summary: DataSource를 감싸지 못함 · HikariCP 아님 → DB 값 · 풀 미측정
+                value:
+                  serviceId: svc_1
+                  runId: run_5
+                  samples:
+                    - { ts: '2026-11-07T14:39:01+09:00', api: GET /api/orders, requests: 52, dbQueriesPerRequest: null, dbWaitMs: null, pool: null }
+      responses:
+        '204':
+          description: 받음
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/StarterTokenInvalid' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  # ───────────────────────── ② 시나리오 ─────────────────────────
+  /ai/check:
+    servers: [{ url: 'http://127.0.0.1:8000', description: AI 서버 (같은 서버 127.0.0.1에만 열림) }]
+    post:
+      tags: [② 시나리오]
+      operationId: aiCheck
+      summary: AI 키로 부를 수 있는지 확인
+      description: |
+        아주 짧은 시험 호출. 본문은 없고 키·주소·모델은 헤더 4개(`X-AI-Provider` `X-AI-Base-Url` `X-AI-Key` `X-AI-Model`)로 받는다. 키는 저장하지 않는다
+        - 실패해도 200이고 `ok: false` + 이유를 `message`에 쉬운 말로 담는다. 400은 요청 자체가 깨졌을 때만
+        - 시험 호출은 AI 서버 안에서 10초까지 기다린다. 넘으면 `ok: false`로 답한다(Spring 15초보다 짧아야 한다)
+        - `X-AI-Key`가 없거나 비어 있으면 시험 호출 없이 `ok: false`("AI 키를 먼저 입력해 주세요")
+        - 내부 주소로 나가는 호출은 막는다: 메타데이터 · 링크 로컬 · 사용자 정보(`user:pass@`)가 든 주소는 항상, 루프백 · 내부 서비스 이름은 기본으로(운영자가 `AI_ALLOWED_HOSTS`로 열면 허용). 시험 호출 없이 `ok: false` + "이 주소는 쓸 수 없어요 · 주소를 확인해 주세요" 한 가지 문구로 답한다(사유를 가르지 않는다). 리다이렉트는 따라가지 않는다. `/ai/scenarios` 등 다른 `/ai/*`도 같은 검사를 거치고 막히면 기본값으로 답한다
+      security: []
+      x-owner: [AI1]
+      x-features: [F-AI-02]
+      x-week: 1주
+      x-jira: [S15P31A107-122]
+      parameters:
+        - $ref: '#/components/parameters/AiProvider'
+        - $ref: '#/components/parameters/AiBaseUrl'
+        - $ref: '#/components/parameters/AiKey'
+        - $ref: '#/components/parameters/AiModel'
+      responses:
+        '200':
+          description: 확인 결과
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AiCheckResult' }
+              examples:
+                ok: { summary: 연결됨, value: { ok: true, shown: Claude · 기본 모델, message: 연결됐어요 } }
+                short: { summary: 키가 너무 짧음, value: { ok: false, shown: null, message: 키가 너무 짧아요 · 다시 확인해 주세요 } }
+                rejected: { summary: 인증 실패, value: { ok: false, shown: null, message: 키가 맞지 않아요 } }
+                timeout: { summary: 시험 호출 10초 넘음, value: { ok: false, shown: null, message: AI가 응답하지 않아요 } }
+                noKey: { summary: 키 헤더 없음 또는 빈 키, value: { ok: false, shown: null, message: AI 키를 먼저 입력해 주세요 } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+
+  /ai/scenarios:
+    servers: [{ url: 'http://127.0.0.1:8000', description: AI 서버 (같은 서버 127.0.0.1에만 열림) }]
+    post:
+      tags: [② 시나리오]
+      operationId: aiScenarios
+      summary: 시나리오 만들기
+      description: |
+        - 키 헤더가 없거나 LLM이 60초를 넘기거나 형식이 틀리면 규칙으로 만든 기본 시나리오(`source: default`). 기본이 된 이유는 선택 필드 `fallback`(`no-key` · `timeout` · `llm-error` · `format` · `all-filtered` · `recheck`)이 알린다 — 화면에 보이지 않고 Spring은 읽지 않아도 되며(하위 호환), 호출 실패 종류는 `llm-error` 하나로 묶어 키 상태를 드러내지 않는다. 원인은 AI 서버 로그로 본다. 성능 = 호출 많은 GET 상위 3개 50→200명·3분·점진 / 보안 = 테스트 계정 · 호출 많은 `{id}` GET 하나의 권한 점검(남의 데이터 보기, AI 없이도 · 재검사도, -231) · 기본 공격 범위 / 코드 품질 = 주요까지
+        - 키가 있는 첫 검사(`mode: full`)는 성능 · 보안 · 코드 품질 항목을 LLM이 만든다(성능 호출과 보안·코드 호출을 동시에). 한쪽이 실패하면 그 영역만 기본 항목이다. 성능 3~5개 · 보안 3~6개(경로 변수가 끝에 하나뿐인 `{id}` GET(로그인이 필요한 것 먼저, 호출 많은 순)은 남의 데이터 보기 항목을 보장, 로그인이 필요한 API를 대상으로 하면 테스트 계정 항목 보장) · 코드 최대 3개
+        - API가 80개를 넘으면 프롬프트에는 호출 많은 상위 80개만 넣는다(받는 값 10개 · 경로 200자). 목록 밖 주소 거르기는 전체 API로 한다. 항목 개수를 자를 때는 호출 많은 순으로 남기고 제외(`excluded`) 항목은 성능 · 코드의 개수에 세지 않는다(제외는 최대 3개만 보인다). 자른 항목은 응답에 없다
+        - 받은 목록에 없는 주소는 빼고 `filtered[]`에 사유를 남긴다. 성능(k6) 항목은 GET만 받고 쓰기 · 삭제 메서드면 `filtered[]` 사유 `부하를 주기 어려운 메서드`로 뺀다. LLM이 보낸 항목은 정해진 칸만 남기고(`source` 등은 버림) `reused`는 false로 둔다. `mode: changed`는 LLM을 부르지 않아 `previous` 항목을 거르지 않고 그대로 돌려주니, 쓰기 API 성능 항목의 마지막 방어는 k6 실행 쪽이다. 숫자는 범위 안으로 고친다(사용자 10–2000, 1–30분)
+        - `mode: changed`(재검사)면 `apis`에는 바뀐 API(새로 생김·바뀜)만, `previous`에는 지난 항목이 온다. 바뀐 API 항목만 새로 만들고, 그대로 쓴 항목은 `previous` 그대로 `reused: true`로 돌려준다. 없어진 API의 항목은 AI 서버가 알 수 없으니 Spring이 `previous`에서 빼고 보낸다. `hasCode: true`이고 `previous`에 코드 품질 항목이 없으면 코드 품질 시나리오를 새로 만든다(`hasCode: false`면 지난 코드 품질 항목을 뺀다). Spring은 바뀐 API가 없어도 코드를 새로 연결했거나 끊었으면, 또는 코드가 있는데 지난 항목에 코드 품질이 없으면 `apis: []`로 부른다. `previous`에 권한 점검이 없고 바뀐 API에 로그인 필요 `{id}` GET이 없으면 바뀌지 않은 로그인 필요 `{id}` GET 하나를 `apis`에 더 실어 부르고, 그 API를 대상으로 한 응답 카드는 권한 점검만 쓴다(S15P31A107-238, docs/ai-server.md §2-4). 그 밖에 바뀐 게 없으면 아예 부르지 않는다
+        - `previous`의 모양이 틀리면(항목에 `key` · `area` · `tool`이 없는 등) 400이 아니라 받은 `apis`로 전체 새로 계획한다(`source: default` · 모두 `reused: false`)
+        - `hasCode: false`면 코드 품질 항목을 만들지 않는다
+        - **`tool: ddalkkak`은 하나로 확정한다**(S15P31A107-170, 선택지 A): `params.count`가 있으면 **테스트 계정 만들기**, `params.idCount`가 있으면 **권한 점검**(남의 데이터 보기 — 주소의 id만 바꿔 조회해 보는 항목. 관리자 주소 `/admin` 류의 비로그인 접근은 AI 프롬프트에서 `zap`이 맡고, `idCount` 항목이 보는 범위는 docs/scan.md §6을 따른다. 딸깍은 관리자 비로그인 점검을 첫 `idCount` 항목에, 없으면 `/admin`이 든 첫 `zap` 항목 결과에 싣는다). `tool` 값을 `account` · `authz` 등으로 나누지 않으며 한 항목은 둘 중 하나만 가진다. 받는 쪽(B2 `scenario_item.tool` 저장 · `ScopeParams` 검사, B3 실행)은 `params`의 `count` · `idCount` 유무로 구분한다(B2 B2 확인 11/2)
+        - 로그인이 필요한 API(`auth.required`)를 대상으로 한 항목이 있으면 테스트 계정 항목(`tool: ddalkkak` · `params.count`)을 함께 넣는다. 없으면 그 항목은 "계정 없음"으로 건너뛴다
+        - `counts`는 `items`의 영역별 개수다(AI가 뺀 `excluded` 항목도 센다)
+        - 요청이 깨졌으면 400. 그 밖의 문제(LLM 실패 · 60초 초과 · 형식 틀림 · 전부 걸러짐)는 오류로 내지 않고 기본 시나리오로 200
+        - 예시는 요청 `full` → 응답 `llm`(키 있음) · `default`(키 헤더 없음), 요청 `changed` → 응답 `changed`, 요청 `noCode` → 응답 `noCode`가 짝이다
+        - 항목 `params`와 범위: 성능(k6) `usersFrom` `usersTo` 10–2000 · `durationMin` 1–30 · `shape` constant·ramp·spike·step · `failP95Ms`(기본 500) · `failErrorRate`(기본 0.01) / 보안(zap) `range` default·wide·full / `tool: ddalkkak`은 `params.count`가 있으면 테스트 계정 만들기, `idCount`가 있으면 권한 점검 — 권한 점검 `idCount` / 테스트 계정 `count` 1–5 / 코드 품질(semgrep) `severity` critical·major·all
+      security: []
+      x-owner: [AI1]
+      x-features: [F-PLAN-01, F-PLAN-02, F-PLAN-03, F-PLAN-04]
+      x-week: 1주 기본 시나리오·성능 / 2주 보안·코드·재검사
+      x-jira: [S15P31A107-122, S15P31A107-132, S15P31A107-140, S15P31A107-149]
+      parameters:
+        - $ref: '#/components/parameters/AiProvider'
+        - $ref: '#/components/parameters/AiBaseUrl'
+        - $ref: '#/components/parameters/AiKey'
+        - $ref: '#/components/parameters/AiModel'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [service, hasCode, mode, apis]
+              properties:
+                service: { $ref: '#/components/schemas/ServiceRef' }
+                hasCode: { type: boolean }
+                mode: { type: string, enum: [full, changed] }
+                apis:
+                  type: array
+                  items: { $ref: '#/components/schemas/ApiEndpoint' }
+                previous:
+                  description: mode가 changed일 때만
+                  type: array
+                  items: { $ref: '#/components/schemas/ScenarioItem' }
+            examples:
+              full:
+                summary: 첫 검사 — 코드 연결됨 · API 목록 전체
+                value:
+                  service: { name: order-api, framework: Spring Boot 3.2 }
+                  hasCode: true
+                  mode: full
+                  apis:
+                    - { method: GET, path: /api/orders, params: [{ name: q, in: query, type: string, required: false }], auth: { required: true, role: USER }, handler: 'OrderController#list', calls: 1820 }
+                    - { method: GET, path: /api/products, params: [], auth: { required: false, role: null }, handler: 'ProductController#list', calls: 960 }
+                    - { method: GET, path: '/api/orders/{id}', params: [{ name: id, in: path, type: integer, required: true }], auth: { required: true, role: USER }, handler: 'OrderController#get', calls: 310 }
+                    - { method: POST, path: /api/orders, params: [{ name: body, in: body, type: object, required: true }], auth: { required: true, role: USER }, handler: 'OrderController#create', calls: 120 }
+              changed:
+                summary: 재검사 — 바뀐 API만 + 지난 항목
+                value:
+                  service: { name: order-api, framework: Spring Boot 3.2 }
+                  hasCode: true
+                  mode: changed
+                  apis:
+                    - { method: GET, path: /api/orders, params: [{ name: q, in: query, type: string, required: false }, { name: page, in: query, type: integer, required: false }], auth: { required: true, role: USER }, handler: 'OrderController#list', calls: 2150 }
+                  previous:
+                    - { key: perf-1, area: perf, tool: k6, title: 주문 목록 피크, api: GET /api/orders, why: '가장 많이 호출되는 API · 1,820번', params: { usersFrom: 50, usersTo: 200, durationMin: 3, shape: ramp, failP95Ms: 500, failErrorRate: 0.01 }, recommended: true, excluded: false, reused: false }
+                    - { key: perf-3, area: perf, tool: k6, title: 주문 상세 피크, api: 'GET /api/orders/{id}', why: 세 번째로 많이 호출돼요, params: { usersFrom: 50, usersTo: 200, durationMin: 3, shape: ramp, failP95Ms: 500, failErrorRate: 0.01 }, recommended: true, excluded: false, reused: false }
+                    - { key: sec-1, area: sec, tool: ddalkkak, title: 테스트 계정 만들기, why: 로그인이 필요한 검사에 쓸 계정이에요, params: { count: 2 }, recommended: true, excluded: false, reused: false }
+                    - { key: sec-2, area: sec, tool: zap, title: 입력값 인젝션, api: GET /api/orders, why: 검색어가 쿼리에 들어가는 API예요, params: { range: default }, recommended: true, excluded: false, reused: false }
+                    - { key: code-1, area: code, tool: semgrep, title: 예외 처리, target: 전체, why: 빈 catch가 장애를 숨겨요, params: { severity: major }, recommended: true, excluded: false, reused: false }
+              noCode:
+                summary: 코드 연결 안 함 (hasCode false)
+                value:
+                  service: { name: order-api, framework: Spring Boot 3.2 }
+                  hasCode: false
+                  mode: full
+                  apis:
+                    - { method: GET, path: /api/orders, params: [{ name: q, in: query, type: string, required: false }], auth: { required: true, role: USER }, handler: 'OrderController#list', calls: 1820 }
+      responses:
+        '200':
+          description: 시나리오
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [source, items, filtered, counts]
+                properties:
+                  source: { type: string, enum: [llm, default] }
+                  fallback:
+                    description: '`source: default`일 때만 오는 선택 필드 — 기본 항목이 된 이유. `no-key` 키 없음 · `timeout` 60초 초과 · `llm-error` 호출 실패(인증 · 한도 · 서버 · 연결 · 모델 · 주소 막힘을 묶음, 키 상태를 드러내지 않는다) · `format` 응답 형식 틀림 · `all-filtered` LLM 항목이 전부 걸러짐 · `recheck` 재검사(LLM을 안 부름). `source: llm`이면 키 자체가 없다. 화면에 보이지 않고 Spring은 읽지 않아도 된다(원인은 AI 서버 로그로 본다)'
+                    type: string
+                    enum: [no-key, timeout, llm-error, format, all-filtered, recheck]
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/ScenarioItem' }
+                  filtered:
+                    type: array
+                    items:
+                      type: object
+                      required: [api, reason]
+                      properties:
+                        api: { type: string }
+                        reason: { type: string }
+                  counts: { $ref: '#/components/schemas/AreaCounts' }
+              examples:
+                llm:
+                  summary: AI가 만든 항목 (요청 full) — 효과 적은 항목은 excluded, 목록에 없는 주소는 filtered
+                  value:
+                    source: llm
+                    items:
+                      - { key: perf-1, area: perf, tool: k6, title: 주문 목록 피크, api: GET /api/orders, why: '가장 많이 호출되는 API · 1,820번', params: { usersFrom: 50, usersTo: 200, durationMin: 3, shape: ramp, failP95Ms: 500, failErrorRate: 0.01 }, recommended: true, excluded: false, reused: false }
+                      - { key: perf-4, area: perf, tool: k6, title: 상품 목록 대량, api: GET /api/products, why: 응답이 캐시돼 부하 효과가 적어요, params: { usersFrom: 50, usersTo: 200, durationMin: 3, shape: ramp, failP95Ms: 500, failErrorRate: 0.01 }, recommended: false, excluded: true, excludeReason: 캐시됨, reused: false }
+                      - { key: sec-1, area: sec, tool: ddalkkak, title: 테스트 계정 만들기, why: 로그인이 필요한 검사에 쓸 계정이에요, params: { count: 2 }, recommended: true, excluded: false, reused: false }
+                      - { key: sec-2, area: sec, tool: zap, title: 입력값 인젝션, api: GET /api/orders, why: 검색어가 쿼리에 들어가는 API예요, params: { range: wide }, recommended: true, excluded: false, reused: false }
+                      - { key: sec-3, area: sec, tool: ddalkkak, title: 남의 주문 보기, api: 'GET /api/orders/{id}', why: id만으로 조회하는 API예요, params: { idCount: 20 }, recommended: true, excluded: false, reused: false }
+                      - { key: code-2, area: code, tool: semgrep, title: 예외 처리, target: 전체, why: 빈 catch가 장애를 숨겨요, params: { severity: major }, recommended: true, excluded: false, reused: false }
+                    filtered: [{ api: GET /api/legacy, reason: 목록에 없는 주소 }]
+                    counts: { perf: 2, sec: 3, code: 1 }
+                default:
+                  summary: 기본 시나리오 (요청 full · 키 헤더 없음 → fallback no-key) — 호출 많은 GET 상위 3개. LLM 60초 초과 · 형식 틀림 등이어도 같은 항목이고 fallback만 timeout · format 등으로 바뀐다
+                  value:
+                    source: default
+                    fallback: no-key
+                    items:
+                      - { key: perf-1, area: perf, tool: k6, title: 주문 목록 피크, api: GET /api/orders, why: '가장 많이 호출되는 GET · 1,820번', params: { usersFrom: 50, usersTo: 200, durationMin: 3, shape: ramp, failP95Ms: 500, failErrorRate: 0.01 }, recommended: true, excluded: false, reused: false }
+                      - { key: perf-2, area: perf, tool: k6, title: 상품 목록 피크, api: GET /api/products, why: 두 번째로 많이 호출되는 GET · 960번, params: { usersFrom: 50, usersTo: 200, durationMin: 3, shape: ramp, failP95Ms: 500, failErrorRate: 0.01 }, recommended: true, excluded: false, reused: false }
+                      - { key: perf-3, area: perf, tool: k6, title: 주문 상세 피크, api: 'GET /api/orders/{id}', why: 세 번째로 많이 호출되는 GET · 310번, params: { usersFrom: 50, usersTo: 200, durationMin: 3, shape: ramp, failP95Ms: 500, failErrorRate: 0.01 }, recommended: true, excluded: false, reused: false }
+                      - { key: sec-1, area: sec, tool: ddalkkak, title: 테스트 계정 만들기, why: 로그인이 필요한 검사에 쓸 계정이에요, params: { count: 2 }, recommended: true, excluded: false, reused: false }
+                      - { key: sec-2, area: sec, tool: ddalkkak, title: 남의 데이터 보기, api: 'GET /api/orders/{id}', why: 주소의 id만 바꿔 남의 데이터가 보이는지 봐요, params: { idCount: 20 }, recommended: true, excluded: false, reused: false }
+                      - { key: sec-3, area: sec, tool: zap, title: 기본 공격 범위, api: GET /api/orders, why: 알려진 공격 패턴을 기본 범위로 시험해요, params: { range: default }, recommended: true, excluded: false, reused: false }
+                      - { key: code-1, area: code, tool: semgrep, title: 주요 코드 규칙, target: 전체, why: 주요 문제까지 살펴봐요, params: { severity: major }, recommended: true, excluded: false, reused: false }
+                    filtered: []
+                    counts: { perf: 3, sec: 3, code: 1 }
+                changed:
+                  summary: 재검사 (요청 changed) — 바뀐 API 항목만 새로, 나머지는 reused true
+                  value:
+                    source: llm
+                    items:
+                      - { key: perf-1, area: perf, tool: k6, title: 주문 목록 피크, api: GET /api/orders, why: '호출이 1,820번에서 2,150번으로 늘었어요', params: { usersFrom: 50, usersTo: 200, durationMin: 3, shape: ramp, failP95Ms: 500, failErrorRate: 0.01 }, recommended: true, excluded: false, reused: false }
+                      - { key: perf-3, area: perf, tool: k6, title: 주문 상세 피크, api: 'GET /api/orders/{id}', why: 세 번째로 많이 호출돼요, params: { usersFrom: 50, usersTo: 200, durationMin: 3, shape: ramp, failP95Ms: 500, failErrorRate: 0.01 }, recommended: true, excluded: false, reused: true }
+                      - { key: sec-1, area: sec, tool: ddalkkak, title: 테스트 계정 만들기, why: 로그인이 필요한 검사에 쓸 계정이에요, params: { count: 2 }, recommended: true, excluded: false, reused: true }
+                      - { key: sec-2, area: sec, tool: zap, title: 입력값 인젝션, api: GET /api/orders, why: 새 page 값이 쿼리에 들어가요, params: { range: default }, recommended: true, excluded: false, reused: false }
+                      - { key: code-1, area: code, tool: semgrep, title: 예외 처리, target: 전체, why: 빈 catch가 장애를 숨겨요, params: { severity: major }, recommended: true, excluded: false, reused: true }
+                    filtered: []
+                    counts: { perf: 2, sec: 2, code: 1 }
+                noCode:
+                  summary: 코드 연결 안 함 (요청 noCode) — 코드 품질 항목 없음
+                  value:
+                    source: default
+                    fallback: no-key
+                    items:
+                      - { key: perf-1, area: perf, tool: k6, title: 주문 목록 피크, api: GET /api/orders, why: '가장 많이 호출되는 GET · 1,820번', params: { usersFrom: 50, usersTo: 200, durationMin: 3, shape: ramp, failP95Ms: 500, failErrorRate: 0.01 }, recommended: true, excluded: false, reused: false }
+                      - { key: sec-1, area: sec, tool: ddalkkak, title: 테스트 계정 만들기, why: 로그인이 필요한 검사에 쓸 계정이에요, params: { count: 2 }, recommended: true, excluded: false, reused: false }
+                      - { key: sec-2, area: sec, tool: zap, title: 기본 공격 범위, api: GET /api/orders, why: 알려진 공격 패턴을 기본 범위로 시험해요, params: { range: default }, recommended: true, excluded: false, reused: false }
+                    filtered: []
+                    counts: { perf: 1, sec: 2, code: 0 }
+        '400': { $ref: '#/components/responses/BadRequest' }
+
+  # ───────────────────────── ③ 결과·점수 ─────────────────────────
+  /ai/reports:
+    servers: [{ url: 'http://127.0.0.1:8000', description: AI 서버 (같은 서버 127.0.0.1에만 열림) }]
+    post:
+      tags: [③ 결과·점수]
+      operationId: aiReports
+      summary: 검사 결과 원본 → 점수 · 쉬운 설명
+      description: |
+        - 점수는 규칙으로 계산한다(LLM 안 씀 · AI가 없어도 점수가 나온다). 미검사 항목은 점수에서 빼고, 영역 전체가 미검사면 `null`
+        - 요청이 깨졌으면(`results` 없음 · 목록 아님) 400. Spring은 400을 해석 실패로 보고 "해석하지 못했어요 · 다시 해석"으로 처리한다
+        - 설명은 LLM이 쓰되 응답 숫자를 원본과 대조해 없는 숫자가 든 문장은 버리고 기본 설명으로 바꾼다. AI가 없으면 ruleId별 기본 설명(`source: default`)
+        - 확인됨 = 공격 성공·측정으로 입증 / 의심 = 정황 + `suspectReason`
+      security: []
+      x-owner: [B3, AI2]
+      x-features: [F-RPT-01, F-RPT-03, F-RPT-04, F-RPT-05, F-RPT-06]
+      x-week: 1주 성능 / 2주 확인·의심 / 3주 보안·코드
+      x-jira: [S15P31A107-114, S15P31A107-123, S15P31A107-124, S15P31A107-141, S15P31A107-150]
+      parameters:
+        - $ref: '#/components/parameters/AiProvider'
+        - $ref: '#/components/parameters/AiBaseUrl'
+        - $ref: '#/components/parameters/AiKey'
+        - $ref: '#/components/parameters/AiModel'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RawReport' }
+      responses:
+        '200':
+          description: 점수 · 요약 · 문제 · 통과
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Report' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+
+  /ai/prompts:
+    servers: [{ url: 'http://127.0.0.1:8000', description: AI 서버 (같은 서버 127.0.0.1에만 열림) }]
+    post:
+      tags: [③ 결과·점수]
+      operationId: aiPrompts
+      summary: 수정 요청문 만들기 (저장 안 함)
+      description: issues가 1개면 단건 틀(현재·목표·관련 코드·요구사항 4개), 2개 이상이면 묶음 틀(우선순위 순 목록 + 고치는 순서). AS-IS가 요청당 DB 쿼리가 아닌 성능 문제(위험이면 p95 · 오류율)에 그 쿼리 수가 있으면 단건은 목표 다음에 `정황:` 줄, 묶음은 그 줄 끝에 정황을 더한다(N+1 의심). 표에 없어 넓은 일반 이름(보안에 취약한 코드 · 코드 품질 규칙)을 받은 코드 문제는 묶음 줄 끝에 원인(`cause`)을 더한다(제목에 도구 메시지가 없어서다, -255). `logs`가 있으면 끝에 붙인다. AI가 없거나 30초를 넘기면 같은 칸의 기본 틀
+      security: []
+      x-owner: [AI2]
+      x-features: [F-PROMPT-02, F-PROMPT-03, F-PROMPT-05]
+      x-week: 1주
+      x-jira: [S15P31A107-125]
+      parameters:
+        - $ref: '#/components/parameters/AiProvider'
+        - $ref: '#/components/parameters/AiBaseUrl'
+        - $ref: '#/components/parameters/AiKey'
+        - $ref: '#/components/parameters/AiModel'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [framework, issues]
+              properties:
+                framework: { type: string, example: Spring Boot }
+                issues:
+                  type: array
+                  minItems: 1
+                  items: { $ref: '#/components/schemas/Issue' }
+                code:
+                  description: 단건일 때 관련 코드 (코드 연결 시)
+                  oneOf: [{ $ref: '#/components/schemas/CodeSnippet' }, { type: 'null' }]
+                logs:
+                  type: array
+                  items: { type: string }
+            examples:
+              single:
+                summary: 6 한 건 · 코드 있음 · 원본 로그 추가
+                value:
+                  framework: Spring Boot 3.2
+                  issues:
+                    - id: p1
+                      itemKey: perf-1
+                      area: perf
+                      level: warn
+                      certainty: suspected
+                      title: DB를 반복 호출하는 정황이 있어요
+                      tech: N+1 의심 · GET /api/orders
+                      impact: 지금은 기준 안이지만 사용자가 늘면 급격히 느려질 수 있어요
+                      asIs: { value: 1240회, label: 요청당 DB 쿼리 }
+                      toBe: { value: 10회 이하, label: 요청당 DB 쿼리 }
+                      metrics:
+                        - { name: 느린 요청 p95, now: 487ms, target: 500ms 이내 }
+                        - { name: 오류율, now: 0.8%, target: 1% 이하 }
+                        - { name: 요청당 DB 쿼리, now: 1240회, target: 10회 이하 }
+                        - { name: 커넥션 풀 대기 최대, now: 148개, target: 10개 미만 }
+                        - { name: 측정 중 앱 PC CPU 최대, now: 62%, target: 80% 미만 }
+                      suspectReason: 요청당 DB 쿼리 1240회 — 측정 정황으로 추정
+                      where: GET /api/orders
+                      cause: 요청마다 같은 조회가 반복되는 것으로 보여요
+                      fix: { recommended: 필요한 데이터를 한 번에 묶어 조회, alternative: 자주 쓰는 결과는 캐시 }
+                      passCriteria: p95 500ms 이내 · 오류율 1% 이하
+                      penalty: 10
+                  code:
+                    file: src/main/java/com/shop/order/OrderController.java
+                    line: 12
+                    commit: a3f9c1
+                    branch: main
+                    decompiled: false
+                    lines: ['10', '11    @GetMapping', '12    public List<Order> list(int page) {', '13        return orders.list(page);', '14    }', '15']
+                  logs: ['[k6] http_req_duration p(95)=487ms · vus=50', '[db] GET /api/orders sql.count=1240/req']
+              bundle:
+                summary: 5 담은 문제 묶음 · 로그 없음
+                value:
+                  framework: Spring Boot 3.2
+                  issues:
+                    - id: s1
+                      itemKey: sec-2
+                      area: sec
+                      level: danger
+                      certainty: confirmed
+                      title: 검색어로 SQL을 바꿔 남의 데이터까지 읽을 수 있어요
+                      tech: SQL 주입 · GET /api/orders
+                      impact: 실제로 뚫린 구멍이라 데이터 유출·변조로 이어질 수 있어요
+                      asIs: { value: 공격 성공, label: SQL 주입 }
+                      toBe: { value: 차단, label: SQL 주입 }
+                      metrics: []
+                      suspectReason: null
+                      where: GET /api/orders
+                      cause: 입력값이 SQL 문장에 그대로 들어가 따옴표 하나로 쿼리가 바뀌어요
+                      fix: { recommended: '값을 문자열로 잇지 말고 파라미터 바인딩(:name · ?)으로 넘기기', alternative: JPA 메서드 이름 쿼리나 Criteria로 바꾸기 }
+                      passCriteria: 같은 공격 재검사에서 성공 0건
+                      penalty: 30
+                    - id: c1
+                      itemKey: code-2
+                      area: code
+                      level: warn
+                      certainty: confirmed
+                      title: 예외를 잡고 아무것도 하지 않아요
+                      tech: '빈 catch · PaymentService.java:113'
+                      impact: 방치하면 장애·보안 사고를 숨기거나 키울 수 있는 코드예요
+                      asIs: { value: 1건, label: 발견 }
+                      toBe: { value: 0건, label: 발견 }
+                      metrics: []
+                      suspectReason: null
+                      where: 'PaymentService.java:113'
+                      cause: 빈 catch가 오류를 삼켜서 장애가 나도 로그 · 알림이 남지 않아요
+                      fix: { recommended: '최소한 로그를 남기고, 여기서 처리할 수 없으면 다시 던지기', alternative: 필요 없는 try-catch는 지우기 }
+                      passCriteria: 재검사에서 error·warning 0건
+                      penalty: 10
+                  code: null
+                  logs: []
+      responses:
+        '200':
+          description: 요청문
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [source, text]
+                properties:
+                  source: { type: string, enum: [llm, default] }
+                  text: { type: string }
+              examples:
+                single:
+                  summary: 요청 single의 기본 틀 (AI 없음 · docs/ai-server.md §3-6)
+                  value:
+                    source: default
+                    text: "Spring Boot 3.2의 GET /api/orders 성능 문제를 분석해 주세요.\n현재(AS-IS): 요청당 DB 쿼리 1240회\n목표(TO-BE): 요청당 DB 쿼리 10회 이하\n관련 코드: src/main/java/com/shop/order/OrderController.java:12 (main a3f9c1)\n10\n11    @GetMapping\n12    public List<Order> list(int page) {\n13        return orders.list(page);\n14    }\n15\n요구사항: ① 원인 확인 ② 수정안 ③ 회귀 테스트 ④ 재검증 방법\n\n관측 로그:\n[k6] http_req_duration p(95)=487ms · vus=50\n[db] GET /api/orders sql.count=1240/req"
+                bundle:
+                  summary: 요청 bundle의 기본 틀 (AI 없음 · docs/ai-server.md §3-6)
+                  value:
+                    source: default
+                    text: "Spring Boot 3.2에서 아래 2개 문제를 고쳐 주세요.\n\n① [보안 · 위험] 검색어로 SQL을 바꿔 남의 데이터까지 읽을 수 있어요 — GET /api/orders · SQL 주입 공격 성공 → 차단\n② [코드 품질 · 주의] 예외를 잡고 아무것도 하지 않아요 — PaymentService.java:113 · 발견 1건 → 0건\n\n고치는 순서: ① → ②\n요구사항: 항목별 원인 확인 → 수정 → 회귀 테스트 · 서로 영향 주는 변경은 먼저 알려 주세요"
+        '400': { $ref: '#/components/responses/NoItems' }
+
+  # ───────────────────────── ④ 화면 · 계정 ─────────────────────────
+  /api/setup:
+    get:
+      tags: [④ 화면]
+      operationId: getSetup
+      summary: 0-1 1회용 비밀번호
+      description: >-
+        아직 확인 안 된 1회용 비밀번호를 내려준다. 확인 전 새로고침하면 다시 준다. 이미 확인했으면 `needsAck: false` → 화면은 0-2로
+      security: []
+      x-owner: [B2]
+      x-features: [F-INST-03, F-INST-04]
+      x-week: 1주
+      x-jira: [S15P31A107-119]
+      responses:
+        '200':
+          description: 1회용 비밀번호
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [needsAck, username, oneTimePassword]
+                properties:
+                  needsAck: { type: boolean }
+                  username: { type: string }
+                  oneTimePassword: { type: [string, 'null'] }
+              examples:
+                first: { summary: 확인 전 → 0-0 소개 → 0-1, value: { needsAck: true, username: admin, oneTimePassword: kq7X-m2p9-Rtb4-Lw8s } }
+                acked: { summary: 이미 확인함 → 0-2, value: { needsAck: false, username: admin, oneTimePassword: null } }
+  /api/setup/ack:
+    post:
+      tags: [④ 화면]
+      operationId: ackSetup
+      summary: 0-1 "저장했어요" — 원문 폐기
+      security: []
+      x-owner: [B2]
+      x-features: [F-INST-03]
+      x-week: 1주
+      x-jira: [S15P31A107-119]
+      responses:
+        '204': { description: 원문 폐기함 }
+
+  /api/auth/login:
+    post:
+      tags: [④ 화면]
+      operationId: login
+      summary: 0-2 로그인
+      security: []
+      x-owner: [B2]
+      x-features: [F-AUTH-01]
+      x-week: 1주
+      x-jira: [S15P31A107-119]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [username, password]
+              properties:
+                username: { type: string }
+                password: { type: string, format: password }
+            example: { username: admin, password: kq7X-m2p9-Rtb4-Lw8s }
+      responses:
+        '200':
+          description: 세션 쿠키 발급. 첫 로그인이면 화면은 0-3, 아니면 1
+          headers:
+            Set-Cookie: { schema: { type: string }, description: 'DDALKKAK_SESSION=…; HttpOnly' }
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [firstLogin]
+                properties:
+                  firstLogin: { type: boolean }
+              example: { firstLogin: true }
+        '401':
+          description: 아이디·비밀번호 틀림
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              example: { code: LOGIN_FAILED, message: 아이디 또는 비밀번호가 맞지 않아요 }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '500': { $ref: '#/components/responses/ServerError' }
+  /api/auth/logout:
+    post:
+      tags: [④ 화면]
+      operationId: logout
+      summary: 로그아웃 (헤더 admin ▾)
+      x-owner: [B2]
+      x-features: [F-AUTH-04]
+      x-week: 1주
+      x-jira: [S15P31A107-119]
+      responses:
+        '204': { description: 세션 삭제 }
+        '401': { $ref: '#/components/responses/NotLoggedIn' }
+  /api/auth/me:
+    get:
+      tags: [④ 화면]
+      operationId: me
+      summary: 로그인 확인 · 헤더 admin 표시
+      x-owner: [B2]
+      x-features: [F-AUTH-03, F-HOME-04]
+      x-week: 1주
+      x-jira: [S15P31A107-119]
+      responses:
+        '200':
+          description: 현재 사용자
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [username]
+                properties:
+                  username: { type: string }
+              example: { username: admin }
+        '401': { $ref: '#/components/responses/NotLoggedIn' }
+
+  # ───────────────────────── ④ 연결 · 홈 ─────────────────────────
+  /api/services/requests:
+    get:
+      tags: [④ 화면]
+      operationId: listConnectRequests
+      summary: 0-3 ② 연결할 수 있는 서비스 목록 · 다시 찾기 (5초마다)
+      description: 대기 중인 요청 전체, 최근 것부터. 스타터킷이 hello를 보낸 앱이 곧 연결할 수 있는 서비스다 — 딸깍이 포트를 훑지 않는다(-223). 화면은 목록에서 하나를 골라 허용 · 무시하고, "다시 찾기"는 `again=true`로 이 목록을 바로 다시 받는다 — "아니에요"로 무시한 요청도 무시 뒤 신호가 두 번 이상 왔고 30초 안에 신호가 있으면 다시 대기로 되돌려 목록에 넣는다(-251). 옛 스타터킷(v1.2.2까지)은 무시 뒤 신호를 한 번 보내고 멈추니 되살리지 않는다 — 허용하면 토큰을 받아 갈 신호가 없다. 5초 새로고침은 `again` 없이 부르니 무시한 요청이 저절로 다시 뜨지 않는다. 정상 연결 중(`GET /api/home`의 `service.connected`가 true이고 해제 확인 필요가 아님)이면 화면은 이 목록 · 승인 화면을 보여 주지 않는다. 끊겼으면 목록을 보여 같은 앱 다시 허용(-211)은 되고, 다른 앱 허용은 409다. hello마다 요청 하나이고, 30초 동안 생존 신호가 없는 요청은 뺀다(-211). 비어 있으면 화면은 0-3 ② 서비스 연결에서 "연결 요청을 기다리고 있어요"로 기다린다. 스타터킷이 1.1.0 전 출시본이면 `starterOutdated`가 true다 — 허용하면 409라 화면은 연결 버튼 대신 스타터킷을 올리라는 안내와 의존성 줄 복사를 보여 준다(-221). 홈(1)은 서비스가 끊겼을 때만 불러 요청이 하나라도 있으면 딸깍 검사를 0-3 ② 서비스 연결로 보낸다 — 같은 앱이면 다시 허용(-211), 다른 앱이면 허용이 409라 모달의 "기존 연결 해제"로 바꾼다(-223)
+      x-owner: [B2]
+      x-features: [F-CONN-03]
+      x-week: 1주
+      x-jira: [S15P31A107-118, S15P31A107-181, S15P31A107-211, S15P31A107-223, S15P31A107-251, S15P31A107-221]
+      parameters:
+        - { name: again, in: query, required: false, description: '"다시 찾기"면 true — 무시 뒤 신호가 두 번 이상 왔고 30초 안에 신호가 있는 무시한 요청을 다시 대기로 (-251). 옛 스타터킷(v1.2.2까지)은 무시 뒤 신호 한 번에 멈춰 되살리지 않는다', schema: { type: boolean, default: false } }
+      responses:
+        '200':
+          description: 대기 중 요청 목록
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/ConnectRequest' }
+              examples:
+                oldKit: { summary: 스타터킷 1.0.0 → 연결 버튼 대신 올리라는 안내 (-221), value: [{ id: req_7f2a, appName: order-api, framework: Spring Boot, frameworkVersion: 3.2.5, host: localhost, port: 8080, pid: 41822, javaVersion: '17', buildTool: Gradle, requestedAt: '2026-10-31T10:02:11+09:00', starterOutdated: true }] }
+        '401': { $ref: '#/components/responses/NotLoggedIn' }
+  /api/services/requests/{id}/approve:
+    parameters: [{ $ref: '#/components/parameters/RequestId' }]
+    post:
+      tags: [④ 화면]
+      operationId: approveConnectRequest
+      summary: 0-3 이 서비스 연결 허용
+      description: service에 저장(연결 단계에서 저장하는 건 이것뿐)하고 서비스 토큰을 발급한다(DB에는 해시만). 허용 답과 토큰은 다음 생존 신호 응답으로 앱에 간다. 같은 앱(이름 · host · port)이 이미 있으면 그 줄에 새 토큰을 주고 옛 토큰은 401이 된다(토큰을 잃은 앱의 다시 허용, -211). 연결은 동시에 1개 — 해제하지 않은 다른 서비스가 있으면(생존 신호가 끊겼어도) 409이고 기존 연결 · 토큰은 그대로다. 해제(`disconnect`)한 뒤에만 다른 서비스를 허용한다. 해제했던 같은 앱을 다시 허용하면 그 줄을 다시 쓰고 해제 시각을 비운다(검사 이력이 이어짐, -223). 순서는 해제하지 않은 다른 서비스 확인이 먼저다 — 그런 서비스가 있으면 같은 앱의 해제한 줄이 있어도 409이고, "같은 앱이면 그 줄에 새 토큰"은 해제하지 않은 줄이 그 앱 하나뿐이거나 없을 때만이다(-223). 스타터킷이 1.1.0 전 출시본이면 서비스 토큰을 몰라 허용해도 API 목록 · 측정값이 401이라 409 `STARTER_OUTDATED`로 거절하고 저장하지 않는다. 직접 빌드한 키트(`dev` · `0.1.0-SNAPSHOT`)는 막지 않는다(-221)
+      x-owner: [B2]
+      x-features: [F-CONN-04]
+      x-week: 1주
+      x-jira: [S15P31A107-118, S15P31A107-181, S15P31A107-211, S15P31A107-223, S15P31A107-221]
+      responses:
+        '200':
+          description: 연결됨
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [serviceId, name]
+                properties:
+                  serviceId: { type: string }
+                  name: { type: string }
+              example: { serviceId: svc_1, name: order-api }
+        '401': { $ref: '#/components/responses/NotLoggedIn' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: 해제하지 않은 다른 서비스가 있음 (덮어쓰지 않음) · 스타터킷이 1.1.0 전 출시본 (-221)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              examples:
+                connected: { value: { code: ALREADY_CONNECTED, message: 이미 연결된 서비스가 있어요 } }
+                oldKit: { value: { code: STARTER_OUTDATED, message: 스타터킷을 새 버전으로 올려 주세요 } }
+  /api/services/requests/{id}/ignore:
+    parameters: [{ $ref: '#/components/parameters/RequestId' }]
+    post:
+      tags: [④ 화면]
+      operationId: ignoreConnectRequest
+      summary: 0-3 아니에요 — 무시 (저장 안 함)
+      x-owner: [B2]
+      x-features: [F-CONN-05]
+      x-week: 1주
+      x-jira: [S15P31A107-118, S15P31A107-181]
+      responses:
+        '204': { description: '무시함. 화면 토스트 "요청을 무시했어요 · 20초쯤 뒤 다시 찾기를 누르면 다시 떠요". 스타터킷은 같은 요청으로 신호를 계속 보내고(v1.2.3~), `listConnectRequests?again=true`가 다시 대기로 되살린다(-251)' }
+        '401': { $ref: '#/components/responses/NotLoggedIn' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /api/services/{id}/disconnect:
+    parameters: [{ $ref: '#/components/parameters/ServiceId' }]
+    post:
+      tags: [④ 화면]
+      operationId: disconnectService
+      summary: 1 · 0-3 ② 연결 해제 (해제 안내 · 409 모달에서 사용자가 확인했을 때만)
+      description: >-
+        연결 점검이 3번 연속 실패하거나 생존 신호가 1분 30초 넘게 없으면(-250) 홈 · 0-3 ②가 해제 안내를 띄우고(안내 칸은 `GET /api/home`의 `service.disconnect`, B2 -234 약속), 사용자가 확인하면 부른다.
+        0-3 ② 허용이 409이고 기존 서비스가 끊겼으면(`service.connected: false`) 409 모달의 "기존 연결 해제"로도 부른다 — 끈 앱 자리(같은 포트)에 다른 앱을 띄우면 점검이 성공해, 생존 신호가 끊긴 지 1분 30초가 지나기 전이거나 딸깍이 다시 켜져 그 서비스의 신호를 아직 못 받았으면 해제 안내가 안 뜨기 때문이다(-250). 해제 뒤 화면은 같은 요청을 다시 허용한다.
+        딸깍은 스스로 해제하지 않는다. 그 서비스에 검사 중(running) 회차가 있으면 409 `RUN_IN_PROGRESS`로 거절한다 — 검사는 단계마다 포트를 지금 연결된 서비스에서 읽어서, 해제하면 남은 단계가 터지거나 같은 포트에 새로 연결한 다른 앱을 검사한다. 화면은 "검사가 끝나거나 중단한 뒤 해제할 수 있어요"로 알린다.
+        service 줄은 남기고(지난 회차 · 결과는 지우지 않는다. 결과 `service`는 그 회차의 서비스 이름이다. 8 이력 · 홈 지난 검사는 지금 연결된 서비스의 회차만이라 해제 뒤엔 비고, 같은 앱을 다시 허용하면 그 줄을 다시 써서 다시 보인다) 해제 시각을 적고 토큰 해시를 지운다. 생존 신호 · 점검 실패 수 · 그 서비스의 허용된 연결 요청(메모리, 아직 앱에 못 건넨 토큰) · 할 일 큐도 지운다 — 요청을 남기면 허용 직후 해제한 앱이 다음 신호에서 401 대신 토큰을 다시 받는다.
+        그 뒤 `GET /api/home`의 `service`는 null이고, 앱의 다음 생존 신호는 401이라 스타터킷은 토큰을 지우고 연결 요청부터 다시 한다(-211).
+        화면은 0-3 ②로 가서 다른 서비스를 고를 수 있다
+      x-owner: [B2]
+      x-features: [F-CONN-09]
+      x-week: 3주
+      x-jira: [S15P31A107-223]
+      responses:
+        '204': { description: 해제함 }
+        '401': { $ref: '#/components/responses/NotLoggedIn' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/RunInProgress' }
+
+  /api/home:
+    get:
+      tags: [④ 화면]
+      operationId: getHome
+      summary: 1 홈 — 서버 상태 · 서비스 줄 · 지난 검사 (10초마다) · 0-3 연결 여부 · 해제 안내 (0-3에 있는 동안 5초마다)
+      description: >-
+        B2가 조립한다. `service`·`health`는 `ServiceRegistry`, `lastRun`은 `RunHistory.latest()`. 연결 안 됐으면 `service: null`, 검사가 없으면 `lastRun: null`(카드 숨김), 끊겼으면 `connected: false`(게이지 회색).
+        연결 전에는 홈 서버 상태 게이지에 딸깍이 도는 곳을 잰 `hostHealth`를 준다(-256).
+        `service.disconnect`(-223)와 `run`(-214 · -228)은 -234에서 칸을 정했다. `kitUrl`은 0-3 ① 스타터킷 주소 안내(-151). `disconnect`는 -223이 채운다(점검 전이면 `failures: 0` · `lastCheckedAt: null`). `run.state`는 -214(running · done) · -228(interrupted)이 채웠다. `service.starterOutdated`는 업그레이드 전에 허용한 앱의 스타터킷이 1.1.0 전 출시본이라 API 목록 · 측정값이 401인 경우다 — 홈 띠가 올리라고 안내한다(-221)
+      x-owner: [B2]
+      x-features: [F-CONN-07, F-HOME-02, F-HOME-03, F-HOME-06]
+      x-week: 1주 health(가짜) / 2주 진짜 · 서비스 줄 · 지난 검사
+      x-jira: [S15P31A107-118, S15P31A107-126, S15P31A107-128, S15P31A107-181, S15P31A107-211, S15P31A107-234, S15P31A107-228, S15P31A107-151, S15P31A107-256, S15P31A107-221]
+      responses:
+        '200':
+          description: 홈 데이터
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Home' }
+              examples:
+                notConnected: { summary: 연결 안 됨 → 0-3, value: { service: null, health: null, lastRun: null, run: null, hostHealth: { cpu: 0.08, mem: { usedMb: 2150, totalMb: 7940 }, disk: { usedGb: 41, totalGb: 233 }, uptimeSec: 5400, serverTime: '2026-11-07T15:10:00+09:00' }, kitUrl: http://localhost:7777 } }
+                otherPort: { summary: 7777을 못 써 7778로 설치 → 0-3 ①이 DDALKKAK_URL 줄 (-151), value: { service: null, health: null, lastRun: null, run: null, hostHealth: { cpu: 0.08, mem: { usedMb: 2150, totalMb: 7940 }, disk: { usedGb: 41, totalGb: 233 }, uptimeSec: 5400, serverTime: '2026-11-07T15:10:00+09:00' }, kitUrl: http://localhost:7778 } }
+                offline: { summary: 끊김 → 게이지 회색, value: { service: { id: svc_1, name: order-api, host: localhost, port: 8080, connected: false, apiCount: 14, disconnect: { failures: 1, needsConfirm: false, lastCheckedAt: '2026-11-07T15:09:50+09:00' }, starterOutdated: false }, health: null, lastRun: null, run: { state: none, runId: null, interruptedAt: null }, hostHealth: null, kitUrl: http://localhost:7777 } }
+                disconnectAsk: { summary: 3번 연속 실패 · 생존 신호 1분 30초 끊김 → 해제 안내 (-223 · -250), value: { service: { id: svc_1, name: order-api, host: localhost, port: 8080, connected: false, apiCount: 14, disconnect: { failures: 3, needsConfirm: true, lastCheckedAt: '2026-11-07T15:10:50+09:00' }, starterOutdated: false }, health: null, lastRun: null, run: { state: none, runId: null, interruptedAt: null }, hostHealth: null, kitUrl: http://localhost:7777 } }
+                runRunning: { summary: 검사 중 → 칩 누르면 그 회차 5 (-214), value: { service: { id: svc_1, name: order-api, host: localhost, port: 8080, connected: true, apiCount: 14, disconnect: null, starterOutdated: false }, health: null, lastRun: null, run: { state: running, runId: run_6, interruptedAt: null }, hostHealth: null, kitUrl: http://localhost:7777 } }
+                interrupted: { summary: 딸깍 재시작으로 멈춤 → 이어서 검사할까요 (-228), value: { service: { id: svc_1, name: order-api, host: localhost, port: 8080, connected: true, apiCount: 14, disconnect: null, starterOutdated: false }, health: null, lastRun: { runId: run_6, at: '2026-11-07T15:02:00+09:00', scores: { perf: null, sec: null, code: null }, topDanger: null, topWarn: null, passed: 0, skipped: { count: 46, reason: null } }, run: { state: interrupted, runId: run_6, interruptedAt: { step: perf, name: 2 성능 } }, hostHealth: null, kitUrl: http://localhost:7777 } }
+                oldKit: { summary: 업그레이드 전에 허용한 옛 스타터킷(1.0.0) → 홈 띠 "스타터킷을 올려 주세요" (-221), value: { service: { id: svc_1, name: order-api, host: localhost, port: 8080, connected: true, apiCount: null, disconnect: { failures: 0, needsConfirm: false, lastCheckedAt: '2026-11-07T15:09:50+09:00' }, starterOutdated: true }, health: null, lastRun: null, run: { state: none, runId: null, interruptedAt: null }, hostHealth: null, kitUrl: http://localhost:7777 } }
+                runDone: { summary: 끝났고 결과를 아직 안 봄 → 칩 누르면 6 결과 (-214), value: { service: { id: svc_1, name: order-api, host: localhost, port: 8080, connected: true, apiCount: 14, disconnect: null, starterOutdated: false }, health: null, lastRun: { runId: run_5, at: '2026-11-07T14:35:00+09:00', scores: { perf: 80, sec: 70, code: 90 }, topDanger: 보안 1 · SQL 문자열 연결, topWarn: "성능 2 · N+1 의심 · 커넥션 풀 대기\n코드 품질 1 · 빈 catch", passed: 35, skipped: { count: 11, reason: 계정 없음 } }, run: { state: done, runId: run_5, interruptedAt: null }, hostHealth: null, kitUrl: http://localhost:7777 } }
+        '401': { $ref: '#/components/responses/NotLoggedIn' }
+
+  # ───────────────────────── ④ 홈 도구 상태 ─────────────────────────
+  /api/tools:
+    get:
+      tags: [④ 화면]
+      operationId: getTools
+      summary: 1 홈 "도구 상태" 팝업 — k6 · ZAP · Semgrep 설치 · 실행 가능 · 최근 오류
+      description: >-
+        도구마다 설치 여부(`docker image ls -q <이미지>`, 부를 때마다 — 0 · 빈 출력이면 없음, 0이 아니면 docker에 못 붙음. DockerTool과 같은 확인) ·
+        실행 가능 여부(이미지가 있을 때만 도구별 버전 명령 `docker run --rm <이미지> <명령>`, 10분 캐시) · 최근 오류를 돌려준다.
+        버전 명령은 k6 `version`(이미지 ENTRYPOINT가 k6) · zap `zap.sh -cmd -version` · semgrep `semgrep --version`이다 — ZAP · Semgrep 이미지는
+        ENTRYPOINT가 없어 `--version`만 주면 그것을 명령으로 실행해 127로 끝난다. 이미지는 받지 않는다(받기는 검사 때 DockerTool, scan.md §2).
+        `state`: `docker_unavailable`(docker에 붙지 못함 — `docker image ls`가 0이 아님. 이미지가 있는지 알 수 없다) · `not_installed`(이미지 없음 — 첫 검사에서 받는다) ·
+        `not_runnable`(이미지는 있는데 시험 실행 실패) · `recent_error`(`lastError`가 있음) · `ok`. 지금 상태가 먼저다 — docker_unavailable · not_installed · not_runnable이면 그 순서로 그 값이고, 설치 · 실행이 되면
+        최근 오류가 있을 때 recent_error, 없으면 ok. 받기 실패 뒤 아직 이미지가 없으면 not_installed에 `lastError`(stage pull)가 같이 온다.
+        `lastError`는 그 도구를 실제로 띄운 가장 최근 회차(그 도구 줄이 `done` · `partial`이거나 사유가 `도구 받기 실패` · `도구 오류` · `결과 해석 실패` ·
+        `요청 구성 오류`인 회차. 단 ZAP의 `요청 구성 오류`는 띄우기 전 확인 요청에서 나니 세지 않는다)에서 사유가 `도구 받기 실패`(`stage: pull`) · `도구 오류`(`stage: run`)인 `raw_result` 줄 중 마지막으로 채운다.
+        그 회차에 그런 줄이 없으면 null(다음 회차가 도구를 돌려 오류 없이 끝나면 사라진다). 시작할 때 앱이 끊겨 도구를 띄우지 않았거나(`앱 연결 끊김`)
+        띄우기 전에 멈춘(`중단됨`) 회차는 회차로 세지 않아, 앞 회차의 도구 오류를 가리지 않는다(!138 리뷰 1-1).
+        관리자 점검이 붙어 건너뛴 ZAP 줄이 `partial`로 바뀐 경우(권한 점검 카드가 없을 때, scan.md §6)는 근거 줄 `[zap] <itemKey> → 건너뜀(<사유>)`의
+        원래 사유로 센다 — `계정 없음`이면 띄운 회차가 아니고 `도구 오류`면 최근 오류다. 이때 `cause`는 뒤에 붙은 `== <itemKey> · 권한 점검` 구간이 아니라
+        ZAP 구간에서 읽는다(!138 리뷰 2-1). 마지막 줄 하나만 보지 않는 까닭은 docker를 부르지
+        않고 건너뛴 줄(`부하를 주기 어려운 메서드` · `계정 없음` · `대상 없음`)도 같은 `tool`로 남아 앞 줄의 도구 오류를 가리기 때문이다.
+        `cause`는 그 줄 원본 로그(`log_path`)에서 그 시나리오 구간 — `== <item_key>` 머리줄부터 다음 `== ` 줄 앞까지 — 의 끝 몇 줄이다(토큰 · 비밀번호는 `****`).
+        원본 로그는 회차마다 도구별 한 파일이라 같은 도구의 다른 시나리오도 이어 쓰므로, 파일 끝을 읽으면 다른 시나리오의 출력이 나온다.
+        Semgrep은 시나리오를 한 번에 돌려 머리줄이 `== code-1,code-2 · exit=…`처럼 키를 여럿 담는다. `fix`는 화면에 그대로 보이는 조치 문구다.
+        목록에는 딸깍이 구성한 도구만 있다(지금은 k6 · zap · semgrep 셋 다 늘 구성). docker에 붙지 못하면 세 도구 모두 `state: docker_unavailable` · `installed: false` · `runnable: false`이고 `fix`가 Docker를 켜라고 안내한다(이미지가 받아져 있어도 미설치로 보이지 않게)
+      x-owner: [B3]
+      x-features: [F-HOME-01, F-RUN-04, F-RUN-05, F-RUN-07]
+      x-week: 4주
+      x-jira: [S15P31A107-229, S15P31A107-244]
+      responses:
+        '200':
+          description: 도구별 상태 (k6 · zap · semgrep 순서)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ToolList' }
+              examples:
+                ok:
+                  summary: 셋 다 실행 가능
+                  value:
+                    tools:
+                      - { name: k6, image: 'grafana/k6:1.8.1', state: ok, installed: true, runnable: true, checkedAt: '2026-11-11T10:00:00+09:00', lastError: null, fix: null }
+                      - { name: zap, image: 'zaproxy/zap-stable:2.16.1', state: ok, installed: true, runnable: true, checkedAt: '2026-11-11T10:00:00+09:00', lastError: null, fix: null }
+                      - { name: semgrep, image: 'semgrep/semgrep:1.180.0', state: ok, installed: true, runnable: true, checkedAt: '2026-11-11T10:00:00+09:00', lastError: null, fix: null }
+                notInstalled:
+                  summary: 첫 검사 전 — 이미지가 아직 없음
+                  value:
+                    tools:
+                      - { name: k6, image: 'grafana/k6:1.8.1', state: not_installed, installed: false, runnable: false, checkedAt: '2026-11-11T10:00:00+09:00', lastError: null, fix: 첫 검사 때 받아요. 미리 받으려면 docker pull grafana/k6:1.8.1 }
+                      - { name: zap, image: 'zaproxy/zap-stable:2.16.1', state: not_installed, installed: false, runnable: false, checkedAt: '2026-11-11T10:00:00+09:00', lastError: null, fix: 첫 검사 때 받아요. 미리 받으려면 docker pull zaproxy/zap-stable:2.16.1 }
+                      - { name: semgrep, image: 'semgrep/semgrep:1.180.0', state: not_installed, installed: false, runnable: false, checkedAt: '2026-11-11T10:00:00+09:00', lastError: null, fix: 첫 검사 때 받아요. 미리 받으려면 docker pull semgrep/semgrep:1.180.0 }
+                pullFailed:
+                  summary: 지난 검사에서 ZAP 이미지를 받지 못함
+                  value:
+                    tools:
+                      - { name: k6, image: 'grafana/k6:1.8.1', state: ok, installed: true, runnable: true, checkedAt: '2026-11-11T10:00:00+09:00', lastError: null, fix: null }
+                      - name: zap
+                        image: 'zaproxy/zap-stable:2.16.1'
+                        state: not_installed
+                        installed: false
+                        runnable: false
+                        checkedAt: '2026-11-11T10:00:00+09:00'
+                        lastError: { stage: pull, reason: 도구 받기 실패, cause: 'Error response from daemon: Get "https://registry-1.docker.io/v2/": EOF', runId: run_5, at: '2026-11-11T09:40:12+09:00' }
+                        fix: 네트워크를 확인하고 docker pull zaproxy/zap-stable:2.16.1 로 다시 받은 뒤 재검사하세요
+                      - { name: semgrep, image: 'semgrep/semgrep:1.180.0', state: ok, installed: true, runnable: true, checkedAt: '2026-11-11T10:00:00+09:00', lastError: null, fix: null }
+        '401': { $ref: '#/components/responses/NotLoggedIn' }
+
+  # ───────────────────────── ④ 홈 업데이트 (-221) ─────────────────────────
+  /api/update:
+    get:
+      tags: [④ 화면]
+      operationId: getUpdate
+      summary: 1 홈 새 버전 띠 — 지금 버전 · 새 버전 · 버튼으로 업데이트할 수 있는지
+      description: >-
+        새 버전은 GitHub Releases latest(`tag_name`)를 6시간에 한 번 본다 — 부를 때 받아 둔 값이 6시간 지났으면 다시 묻는다(3초 제한). 실패하면 `latest: null`(띠 없음)이고 그것도 6시간 둔다.
+        `current`는 출시 이미지의 버전(`DDALKKAK_VERSION`)이다. 소스 빌드(compose · bootRun · dev 이미지)는 null이고 GitHub에 묻지 않는다.
+        `latest`는 `current`보다 새 출시 버전일 때만 있다. `canUpdate`는 설치기(README `docker run` 한 줄)로 깐 서버일 때 true — 화면은 업데이트 버튼을 보인다.
+        false(GHCR 이미지를 Compose로 띄움)면 버튼 대신 `docker compose pull && docker compose up -d` 안내를 보인다. 홈에 들어올 때 한 번 부른다
+      x-owner: [B2]
+      x-features: [F-HOME-06]
+      x-week: 발표 뒤
+      x-jira: [S15P31A107-221]
+      responses:
+        '200':
+          description: 버전
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/UpdateStatus' }
+              examples:
+                newVersion: { summary: 설치기로 깐 1.2.1 · 새 버전 1.2.2 → 띠 + 업데이트 버튼, value: { current: '1.2.1', latest: '1.2.2', canUpdate: true } }
+                compose: { summary: Compose로 띄운 출시 이미지 → 띠 + 명령 안내, value: { current: '1.2.1', latest: '1.2.2', canUpdate: false } }
+                upToDate: { summary: 최신이거나 GitHub 확인 실패 → 띠 없음, value: { current: '1.2.2', latest: null, canUpdate: true } }
+                source: { summary: 소스 빌드 → 띠 없음, value: { current: null, latest: null, canUpdate: false } }
+        '401': { $ref: '#/components/responses/NotLoggedIn' }
+    post:
+      tags: [④ 화면]
+      operationId: startUpdate
+      summary: 1 홈 업데이트 버튼 — 새 버전 설치기를 띄운다
+      description: >-
+        지난 업데이트가 남긴 설치기를 `docker rm ddalkkak-update`로 지우고(도는 것은 `-f`가 없어 남는다) `docker run -d --name ddalkkak-update --pull missing -v /var/run/docker.sock:/var/run/docker.sock ghcr.io/mouse-ddalkkak/ddalkkak-server:<latest> update`를 띄운 뒤(새 이미지를 받는 데까지 기다린다, 최대 5분) 202를 준다.
+        설치기는 `--rm` 없이 남는다 — 도중에 실패하면 `docker logs ddalkkak-update`로 이유를 본다.
+        설치기 `update`(server/start.sh)가 지금 설치의 방식 · 포트 · 홈 폴더 · AI 허용 주소를 읽어 이 서버를 새 버전으로 바꾼다 — 1분쯤 서버가 응답하지 않다가 새 버전으로 뜬다.
+        로그인 세션은 메모리라 다시 로그인한다(401 → 0-2). 비밀번호 · 검사 기록 · 포트 · 홈 폴더는 그대로다. 이미 누가 눌러 같은 이름 컨테이너가 돌고 있으면 그 업데이트가 이어지므로 202다.
+        새 버전이 없거나(`latest: null`) 버튼을 쓸 수 없는 설치(`canUpdate: false`)면 409 `UPDATE_UNAVAILABLE`, 검사 중이면 다시 띄우면 검사가 끊겨 409 `RUN_IN_PROGRESS`, docker가 실패하면 502 `UPDATE_FAILED`
+      x-owner: [B2]
+      x-features: [F-HOME-06]
+      x-week: 발표 뒤
+      x-jira: [S15P31A107-221]
+      responses:
+        '202':
+          description: 설치기를 띄움 — 1분쯤 뒤 새 버전
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [version]
+                properties:
+                  version: { type: string, description: 올라갈 버전 }
+              example: { version: '1.2.2' }
+        '401': { $ref: '#/components/responses/NotLoggedIn' }
+        '409':
+          description: 새 버전이 없거나 버튼을 쓸 수 없는 설치 · 검사 중
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              examples:
+                unavailable: { value: { code: UPDATE_UNAVAILABLE, message: 업데이트할 새 버전이 없어요 } }
+                running: { value: { code: RUN_IN_PROGRESS, message: 이미 검사 중이에요 } }
+        '502':
+          description: 설치기를 띄우지 못함 (이미지를 받지 못함 · docker 실패)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              example: { code: UPDATE_FAILED, message: 업데이트를 시작하지 못했어요 · 설치 명령을 다시 실행해 주세요 }
+
+  # ───────────────────────── ④ AI 연결 ─────────────────────────
+  /api/ai-settings:
+    get:
+      tags: [④ 화면]
+      operationId: getAiSettings
+      summary: AI 설정 (헤더 "AI 연결됨 / AI 없음" · 팝업 초깃값)
+      description: >-
+        키는 다시 보여주지 않는다(`keyMasked`). 설정이 없으면 `provider: null, connected: false`
+      x-owner: [B2]
+      x-features: [F-AI-03, F-HOME-04]
+      x-week: 1주
+      x-jira: [S15P31A107-127]
+      responses:
+        '200':
+          description: 저장된 설정
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AiSetting' }
+              examples:
+                none: { summary: AI 없음 → 헤더 "AI 없음", value: { provider: null, baseUrl: null, model: null, keyMasked: null, connected: false } }
+        '401': { $ref: '#/components/responses/NotLoggedIn' }
+    put:
+      tags: [④ 화면]
+      operationId: putAiSettings
+      summary: AI 설정 저장 — 연결 확인이 성공한 값
+      description: 화면은 `POST /api/ai-settings/check` 성공 뒤에 같은 값으로 부른다. 키는 ai_setting에 암호화 저장
+      x-owner: [B2]
+      x-features: [F-AI-01, F-AI-03]
+      x-week: 1주
+      x-jira: [S15P31A107-127]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AiSettingInput' }
+      responses:
+        '200':
+          description: 저장된 설정
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AiSetting' }
+        '400': { $ref: '#/components/responses/InvalidUrl' }
+        '401': { $ref: '#/components/responses/NotLoggedIn' }
+    delete:
+      tags: [④ 화면]
+      operationId: deleteAiSettings
+      summary: AI 연결 해제 — 저장한 설정을 지운다 (AI 없음으로)
+      description: >-
+        ai_setting 행을 지운다(스키마 변경 없음). 설정이 없어도 200. 지운 뒤 헤더는 "AI 없음"이 되고 다음 검사 준비 · 보고서는 키 없이(기본 범위 · 기본 문구) 간다
+      x-owner: [B2]
+      x-features: [F-AI-01, F-AI-03]
+      x-week: 5주
+      x-jira: [S15P31A107-254]
+      responses:
+        '200':
+          description: 지운 뒤의 설정 (늘 AI 없음)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AiSetting' }
+              example: { provider: null, baseUrl: null, model: null, keyMasked: null, connected: false }
+        '401': { $ref: '#/components/responses/NotLoggedIn' }
+  /api/ai-settings/check:
+    post:
+      tags: [④ 화면]
+      operationId: checkAiSettings
+      summary: AI 연결 확인 → /ai/check
+      description: 저장 전 값을 그대로 보내 확인한다. 실패해도 200, 이유는 `message`(AI1 문구 그대로). 15초 무응답이면 `"AI가 응답하지 않아요"`
+      x-owner: [B2]
+      x-features: [F-AI-02]
+      x-week: 1주
+      x-jira: [S15P31A107-127]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AiSettingInput' }
+      responses:
+        '200':
+          description: 확인 결과
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AiCheckResult' }
+              examples:
+                ok: { value: { ok: true, shown: Claude · 기본 모델, message: 연결됐어요 · 키는 이 서버에만 저장돼요 } }
+                keyShort: { value: { ok: false, shown: null, message: 키가 너무 짧아요 · 다시 확인해 주세요 } }
+        '400': { $ref: '#/components/responses/InvalidUrl' }
+        '401': { $ref: '#/components/responses/NotLoggedIn' }
+
+  # ───────────────────────── ④ 코드 연결 ─────────────────────────
+  /api/code-source:
+    get:
+      tags: [④ 화면]
+      operationId: getCodeSource
+      summary: 저장한 코드 연결 방식 (0-3 ④ · 홈 코드 줄)
+      description: >-
+        저장한 방식 = 0-3 ④에서 마지막으로 가져오기에 성공한 줄(github · jar · zip · local · none 모두, 실패한 줄은 건너뛴다. 검사 때 다시 가져온 줄도 같은 방식이다). 검사를 시작하면 준비가 이 방식으로 다시 가져온다(`POST /api/runs/prepare`). 없으면 `last: null` → 화면은 "딸깍 검사"에서 0-3 ④로 보낸다 (-224)
+      x-owner: [B2]
+      x-features: [F-CODE-01]
+      x-week: 3주
+      x-jira: [S15P31A107-144, S15P31A107-224]
+      responses:
+        '200':
+          description: 지난 설정
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [last]
+                properties:
+                  last:
+                    oneOf: [{ $ref: '#/components/schemas/CodeSource' }, { type: 'null' }]
+              examples:
+                previous: { summary: 저장한 방식 있음, value: { last: { type: github, ref: 'https://github.com/owner/order-api', branch: main, lastCommit: a3f9c1, lastCommitAt: '2026-11-07T12:10:00+09:00', lastFetchedAt: '2026-11-07T14:00:00+09:00', sameVersion: true, decompiled: false, fileHash: null } } }
+                noSaved: { summary: 저장한 방식 없음 → 0-3 ④, value: { last: null } }
+        '401': { $ref: '#/components/responses/NotLoggedIn' }
+    post:
+      tags: [④ 화면]
+      operationId: postCodeSource
+      summary: 0-3 ④ 코드 연결 저장 · 한 번 가져와 확인
+      description: >-
+        0-3 ④에서 부른다. 한 번 가져와 보고, 성공하면 그 방식이 저장한 방식이 된다(`GET /api/code-source`의 `last`). 검사를 시작할 때마다 준비가 같은 방식으로 다시 가져오므로 화면은 검사 때 이걸 부르지 않는다 (-224). 코드 자체는 DB에 넣지 않고 "어디서 가져올지"만 code_source에 둔다. 토큰은 암호화(응답 · 로그에 나오지 않는다). `type: none`이면 줄만 남기고 바로 끝나 `jobId: null`(코드 품질 OFF를 저장). `jar`는 JAR와 WAR 둘 다다 — ref가 `.war`로 끝나면 `WEB-INF/classes`, 아니면 `BOOT-INF/classes`(없으면 통째)를 디컴파일한다. 화면은 경로를 직접 받지 않고 `GET /api/code-source/artifacts` 후보 중 고른 `path`를 ref로 보낸다. `github`는 https 저장소 주소(비밀번호가 든 주소는 400 `CODE_URL_INVALID`)와 branch(비우면 기본 브랜치), 같은 주소로 가져오는 데 성공한 줄이 있으면 `token`이 null이어도 그중 가장 최근 줄의 토큰을 이어 쓴다(실패한 줄은 건너뛴다). `jar` · `local`은 딸깍 설치 서버의 홈 폴더 아래 절대 경로이고(`~/.ddalkkak` 아래는 안 된다), 어긋나면 이 응답이 아니라 작업 `error`(`CODE_PATH_INVALID`)로 나온다. ref · branch · token이 저장 칸보다 길면(ref 512자 · branch 100자) 400 `BAD_REQUEST`(공통)
+      x-owner: [B2]
+      x-features: [F-CODE-01, F-CODE-02, F-CODE-04, F-CODE-05]
+      x-week: 2주 코드 없이 / 3주 나머지
+      x-jira: [S15P31A107-133, S15P31A107-144, S15P31A107-224]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CodeSourceInput' }
+            examples:
+              github: { value: { type: github, ref: 'https://github.com/owner/order-api', branch: main, token: null } }
+              war: { summary: 후보에서 고른 WAR, value: { type: jar, ref: /home/me/shop/target/shop.war, branch: null, token: null } }
+              none: { value: { type: none } }
+      responses:
+        '200':
+          description: 가져오기 시작 (진행은 jobs로)
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [jobId]
+                properties:
+                  jobId: { type: [string, 'null'] }
+              example: { jobId: job_3 }
+        '400': { $ref: '#/components/responses/CodeUrlInvalid' }
+        '401': { $ref: '#/components/responses/NotLoggedIn' }
+        '409':
+          description: 연결된 서비스가 없음
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              example: { code: SERVICE_OFFLINE, message: 앱이 꺼져 있어요 }
+  /api/code-source/zip:
+    post:
+      tags: [④ 화면]
+      operationId: uploadCodeZip
+      summary: 0-3 ④ 코드 ZIP 올리기 · 보관
+      description: 마지막으로 올린 ZIP 하나를 `~/.ddalkkak/code/{serviceId}/source.zip`에 풀어 보고, 풀기에 성공해야 앞의 것을 지우고 바꿔 보관하며 저장한 방식이 된다(실패한 ZIP은 보관하지 않아 앞의 저장한 방식이 그대로다). 검사를 시작할 때 다시 올리지 않아도 이 파일을 다시 푼다. 소스 식별자는 파일 sha256 앞 12자(`fileHash`) (-224)
+      x-owner: [B2]
+      x-features: [F-CODE-02]
+      x-week: 3주
+      x-jira: [S15P31A107-144, S15P31A107-224]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file: { type: string, format: binary }
+      responses:
+        '200':
+          description: 풀기 시작
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [jobId]
+                properties:
+                  jobId: { type: string }
+              example: { jobId: job_4 }
+        '400':
+          description: ZIP 깨짐
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              example: { code: ZIP_INVALID, message: 압축을 풀 수 없어요 }
+        '401': { $ref: '#/components/responses/NotLoggedIn' }
+        '409':
+          description: 연결된 서비스가 없음
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              example: { code: SERVICE_OFFLINE, message: 앱이 꺼져 있어요 }
+        '413':
+          description: 파일이 200MB(`spring.servlet.multipart.max-file-size`)를 넘음. 로그인 확인보다 먼저 온다. 크게 넘으면 서버(Tomcat)가 이 응답 없이 연결을 끊으니 화면이 올리기 전에 크기를 본다
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              example: { code: BAD_REQUEST, message: 요청 형식을 확인해 주세요 }
+  /api/code-source/artifacts:
+    get:
+      tags: [④ 화면]
+      operationId: getCodeArtifacts
+      summary: 0-3 ④ 디컴파일 후보 (JAR · WAR)
+      description: >-
+        연결된 서비스가 hello로 알려 준 실행 파일(`artifact`) 하나와 작업 폴더(`workDir`)와 그 아래 3단계에서 `*.jar` · `*.war`만 찾는다(`.git` · `node_modules` · `.gradle` 건너뜀, 최대 50개, 실행 중인 파일이 맨 앞 · 나머지는 최근 수정순). 서버의 다른 경로는 찾지 않는다. `/host-home`으로 바꾼 `workDir`이 홈 밖(예 `user.dir`이 `/` · `/opt/app`) · 홈 자체 · `~/.ddalkkak` 아래면 폴더는 찾지 않고 `artifact` 한 줄만 본다(서버 컨테이너의 `/`를 훑지 않게, !127 리뷰).
+        홈 폴더 밖 · `~/.ddalkkak` 아래 · 읽을 권한이 없는 파일도 목록에 넣되 `readable: false` + `reason`으로 구분한다(고를 수 없다). 옛 스타터킷이라 `artifact` · `workDir`이 없으면 빈 목록이고 `workDir: null` → 화면은 "스타터킷을 새 버전으로 올리면 후보를 찾아요" 안내 (-224). 새 스타터킷이라도 경로가 1024자를 넘어 `workDir`이 null이면 같은 안내가 나온다(드문 경우라 받아들임). `workDir`만 null이고 `artifact`가 있으면 그 파일 하나는 목록에 넣는다
+      x-owner: [B1]
+      x-features: [F-CODE-05]
+      x-week: 3주
+      x-jira: [S15P31A107-224, S15P31A107-244]
+      responses:
+        '200':
+          description: 후보 목록
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [workDir, artifacts]
+                properties:
+                  workDir: { type: [string, 'null'], description: 찾은 작업 폴더. 모르면 null }
+                  artifacts:
+                    type: array
+                    items: { $ref: '#/components/schemas/CodeArtifact' }
+              examples:
+                found:
+                  summary: 실행 중인 jar + 작업 폴더의 war · 권한 없는 파일
+                  value:
+                    workDir: /home/me/order-api
+                    artifacts:
+                      - { path: /home/me/order-api/build/libs/order-api.jar, kind: jar, from: running, readable: true, reason: null, sizeBytes: 48211033, modifiedAt: '2026-11-11T09:40:00+09:00' }
+                      - { path: /home/me/order-api/build/libs/order-api-plain.war, kind: war, from: workDir, readable: true, reason: null, sizeBytes: 9120044, modifiedAt: '2026-11-10T18:02:00+09:00' }
+                      - { path: /home/me/order-api/deploy/old.jar, kind: jar, from: workDir, readable: false, reason: 읽을 권한이 없어요, sizeBytes: null, modifiedAt: null }
+                oldKit: { summary: 옛 스타터킷 → 후보 없음, value: { workDir: null, artifacts: [] } }
+        '401': { $ref: '#/components/responses/NotLoggedIn' }
+        '409':
+          description: 연결된 서비스가 없음
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              example: { code: SERVICE_OFFLINE, message: 앱이 꺼져 있어요 }
+  /api/code-source/jobs/{jobId}:
+    parameters:
+      - { name: jobId, in: path, required: true, schema: { type: string } }
+    get:
+      tags: [④ 화면]
+      operationId: getCodeJob
+      summary: 코드 가져오기 진행 · 실행 중 버전과 같은지
+      description: >-
+        가져온 커밋과 실행 중 커밋(`ServiceRegistry.current()`)을 짧은 쪽 길이만큼 앞에서부터 비교한다. 달라도 진행은 가능(경고만). jar · war 복원이면 `decompiled: true` → "줄 번호·변수명 부정확 · 디컴파일 기준". 실패하면 `step: failed` + `error`(`CODE_FETCH_FAILED` · `CODE_BRANCH_NOT_FOUND` · `ZIP_INVALID` · `CODE_PATH_INVALID` · `SERVER_ERROR`). 서버가 다시 켜지면 작업 상태가 사라져 404
+      x-owner: [B2]
+      x-features: [F-CODE-02, F-CODE-03]
+      x-week: 3주
+      x-jira: [S15P31A107-144]
+      responses:
+        '200':
+          description: 진행 상태
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CodeJob' }
+              examples:
+                cloning: { summary: 가져오는 중, value: { step: cloning, done: false, commit: null, runningCommit: a3f9c1, sameVersion: null, decompiled: false, error: null } }
+                differentVersion: { summary: 실행 중인 버전과 다름, value: { step: done, done: true, commit: b71e02, runningCommit: a3f9c1, sameVersion: false, decompiled: false, error: null } }
+                decompiled: { summary: 실행 파일에서 복원 → "디컴파일 기준", value: { step: done, done: true, commit: null, runningCommit: a3f9c1, sameVersion: null, decompiled: true, error: null } }
+                failed: { summary: 저장소 접근 실패, value: { step: failed, done: true, commit: null, runningCommit: a3f9c1, sameVersion: null, decompiled: false, error: { code: CODE_FETCH_FAILED, message: 저장소에 접근할 수 없어요 · 토큰을 확인해 주세요 } } }
+                branchNotFound: { summary: 저장소에는 닿았는데 없는 브랜치 (-250), value: { step: failed, done: true, commit: null, runningCommit: a3f9c1, sameVersion: null, decompiled: false, error: { code: CODE_BRANCH_NOT_FOUND, message: 브랜치를 찾을 수 없어요 · 브랜치 이름을 확인해 주세요 } } }
+        '401': { $ref: '#/components/responses/NotLoggedIn' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  # ───────────────────────── ④ 준비 · 범위 ─────────────────────────
+  /api/runs/prepare:
+    post:
+      tags: [④ 화면]
+      operationId: startPrepare
+      summary: 3 준비 시작 — 회차 만들기
+      description: >-
+        회차(run, preparing)를 만들고 코드 가져오기 · API 목록 받기(`ApiCatalog.requestLatest`) · 시나리오 만들기(`/ai/scenarios` → `ScenarioStore.save`)를 차례로 한다. 재검사(헤더 "재검사")도 같은 엔드포인트. 본문은 없다(-224에서 `codeJobId`를 뺐다).
+        코드 가져오기는 저장한 방식(`GET /api/code-source`의 `last`)으로 매번 다시 한다 — GitHub은 최신 커밋을 받고, ZIP은 보관한 파일을 다시 풀고, JAR/WAR는 다시 디컴파일하고, 내 컴퓨터 폴더는 다시 복사한다. 회차마다 새 code_source 줄이 생겨 결과의 `codeSource`(커밋 · 파일 해시 · 대상)가 그 회차 것이 된다.
+        저장한 방식이 없거나 `none`이면 그 줄은 "코드 없이"로 끝나고 코드 품질은 미검사. 가져오기에 실패하면(저장소 접근 실패 · JAR/WAR 없음 · 보관한 ZIP 없음) 그 줄이 `skipped`(detail = 이유)이고 준비는 이어 가며 코드 품질은 미검사 (F-CODE-02)
+      x-owner: [B2]
+      x-features: [F-API-01, F-HIST-04, F-CODE-02]
+      x-week: 2주 (재검사 진입 3주)
+      x-jira: [S15P31A107-133, S15P31A107-145, S15P31A107-224]
+      responses:
+        '200':
+          description: 준비 시작 (진행은 GET /api/runs/prepare/{id})
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RunIdOnly' }
+        '401': { $ref: '#/components/responses/NotLoggedIn' }
+        '409':
+          description: 앱이 꺼져 있거나 이미 검사 중
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              examples:
+                offline: { value: { code: SERVICE_OFFLINE, message: 앱이 꺼져 있어요 } }
+                running: { value: { code: RUN_IN_PROGRESS, message: 이미 검사 중이에요 } }
+  /api/runs/prepare/{id}:
+    parameters: [{ $ref: '#/components/parameters/RunId' }]
+    get:
+      tags: [④ 화면]
+      operationId: getPrepare
+      summary: 3 준비 진행
+      description: >-
+        줄 3개(코드 가져오기 · API 목록 받기 · 시나리오 만들기) + 진행률. `done: true`면 화면은 자동으로 4. AI가 없으면 세 번째 줄은 "AI 연결 없음 · 기본 범위 사용". 준비 실패면 실패한 줄이 `skipped`(detail = 오류 문구)이고 `error`가 채워진다. 서버가 다시 켜져 상태를 잃은 회차는 404 → 화면은 홈(1)부터
+      x-owner: [B2]
+      x-features: [F-API-04, F-PLAN-06]
+      x-week: 2주
+      x-jira: [S15P31A107-133]
+      responses:
+        '200':
+          description: 준비 진행
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Prepare' }
+              examples:
+                done:
+                  summary: 끝 → 화면 4로 자동
+                  value:
+                    rows: [{ name: 코드 가져오기, state: done, detail: GitHub main a3f9c1 }, { name: API 목록 받기, state: done, detail: 14개 · 지난번보다 +1 }, { name: 시나리오 만들기, state: done, detail: 성능 · 보안 · 코드 품질 }]
+                    pct: 100
+                    done: true
+                    apiCount: 14
+                    apiDiff: { added: 1, removed: 0, changed: 0, apis: [{ api: POST /api/coupons, change: new }] }
+                    aiMode: llm
+                    error: null
+                noAi:
+                  summary: AI 연결 없음 → 기본 범위
+                  value:
+                    rows: [{ name: 코드 가져오기, state: done, detail: GitHub main a3f9c1 }, { name: API 목록 받기, state: done, detail: 14개 · 지난번보다 +1 }, { name: 시나리오 만들기, state: skipped, detail: AI 연결 없음 · 기본 범위 사용 }]
+                    pct: 100
+                    done: true
+                    apiCount: 14
+                    apiDiff: { added: 1, removed: 0, changed: 0, apis: [{ api: POST /api/coupons, change: new }] }
+                    aiMode: default
+                    error: null
+                failed:
+                  summary: 준비 실패 (앱 꺼짐)
+                  value:
+                    rows: [{ name: 코드 가져오기, state: done, detail: GitHub main a3f9c1 }, { name: API 목록 받기, state: skipped, detail: 앱이 꺼져 있어요 }, { name: 시나리오 만들기, state: waiting, detail: 성능 · 보안 · 코드 품질 }]
+                    pct: 40
+                    done: true
+                    apiCount: null
+                    apiDiff: null
+                    aiMode: null
+                    error: { code: SERVICE_OFFLINE, message: 앱이 꺼져 있어요 }
+                firstCheck:
+                  summary: 첫 검사 → 비교 없이 "14개", apiDiff null
+                  value:
+                    rows: [{ name: 코드 가져오기, state: done, detail: GitHub main a3f9c1 }, { name: API 목록 받기, state: done, detail: 14개 }, { name: 시나리오 만들기, state: running, detail: 성능 · 보안 · 코드 품질 }]
+                    pct: 70
+                    done: false
+                    apiCount: 14
+                    apiDiff: null
+                    aiMode: llm
+                    error: null
+        '401': { $ref: '#/components/responses/NotLoggedIn' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /api/runs/prepare/{id}/use-default:
+    parameters: [{ $ref: '#/components/parameters/RunId' }]
+    post:
+      tags: [④ 화면]
+      operationId: useDefaultScope
+      summary: 3 AI 추천 없이 기본 범위로 바로 가기
+      description: >-
+        시나리오 만들기(3줄)가 AI 답을 기다리는 중이면 그 답을 버리고, 이 요청 안에서 키 헤더 없이 `/ai/scenarios`를 불러 받은 기본 시나리오로 준비를 끝낸다 — 응답이 `done: true`라 화면은 바로 4.
+        코드 가져오기 · API 목록 받기(1 · 2줄) 중이면 기억했다가 3줄에서 키 없이 부른다 — 응답은 아직 `done: false`, 화면은 GET 폴링을 이어 간다.
+        어느 쪽이든 3줄은 `skipped` "기본 범위 사용"이고 `aiMode`는 `default`, 늦게 온 AI 답은 저장하지 않는다. 키 없는 호출은 이 요청 안에서 돌아서 AI 서버가 답하지 않으면 최대 140초(70초 × 2번) 걸리고 준비 실패로 끝난다. 지난 회차와 AI 사용 여부가 같고 바뀐 API가 없어 지난 항목을 그대로 쓰는 재검사는 AI를 기다리지 않아 그대로 끝난다. 지난 회차가 AI를 안 썼으면 3줄 AI 호출 중에 눌러도 지난 항목을 이어 받는다(바뀐 것이 없으면 AI를 다시 부르지 않는다, -252).
+        준비가 이미 끝났거나 실패한 회차, AI 답이 먼저 와서 저장하는 중인 회차는 409 `PREPARE_ENDED`(화면은 폴링을 이어 간다. `done`이면 4, `error`가 있으면 실패 화면), 없거나 서버가 다시 켜져 상태를 잃은 회차는 404
+      x-owner: [B2]
+      x-features: [F-PLAN-06]
+      x-week: 2주 (화면 연결 3주)
+      x-jira: [S15P31A107-167, S15P31A107-139]
+      responses:
+        '200':
+          description: 준비 진행 (GET /api/runs/prepare/{id}와 같은 모양)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Prepare' }
+              examples:
+                done:
+                  summary: AI 답을 기다리던 중 → 바로 끝, 화면 4로
+                  value:
+                    rows: [{ name: 코드 가져오기, state: done, detail: GitHub main a3f9c1 }, { name: API 목록 받기, state: done, detail: 14개 · 지난번보다 +1 }, { name: 시나리오 만들기, state: skipped, detail: 기본 범위 사용 }]
+                    pct: 100
+                    done: true
+                    apiCount: 14
+                    apiDiff: { added: 1, removed: 0, changed: 0, apis: [{ api: POST /api/coupons, change: new }] }
+                    aiMode: default
+                    error: null
+                early:
+                  summary: API 목록을 받는 중 → 3줄에서 기본으로
+                  value:
+                    rows: [{ name: 코드 가져오기, state: done, detail: GitHub main a3f9c1 }, { name: API 목록 받기, state: running, detail: '' }, { name: 시나리오 만들기, state: waiting, detail: 성능 · 보안 · 코드 품질 }]
+                    pct: 30
+                    done: false
+                    apiCount: null
+                    apiDiff: null
+                    aiMode: null
+                    error: null
+        '401': { $ref: '#/components/responses/NotLoggedIn' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: 준비가 이미 끝났거나 실패함, 또는 AI 답이 먼저 와서 저장하는 중
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              example: { code: PREPARE_ENDED, message: 준비가 이미 끝났어요 }
+  /api/runs/prepare/{id}/apis:
+    parameters: [{ $ref: '#/components/parameters/RunId' }]
+    get:
+      tags: [④ 화면]
+      operationId: getPrepareApis
+      summary: 4 "+ 추가" 대상 후보 — 이번 회차 API 목록
+      description: >-
+        3에서 받은 이번 회차 API 목록 전부(카드가 없는 API 포함, 메서드를 거르지 않음 — 성능 대상은 화면이 GET만 보여 준다 NF-07). `api`는 직접 추가 `added.api`에 그대로 쓰는 문자열이다.
+        `change`는 화면 3 `apiDiff`와 같은 기준(마지막으로 끝난 회차의 목록)으로 `new` · `changed`, 그 밖에는 null이고 첫 검사면 모두 null.
+        비교 기준은 요청할 때 다시 고른다. 이 회차가 준비됨으로 남은 사이에 같은 서비스의 다른 회차가 끝나면 그 회차와 비교해 화면 3과 달라질 수 있다(표시만 다르고 저장 값은 그대로).
+        API 목록을 아직 받지 못한 회차는 `apis: []`, 없는 회차는 404
+      x-owner: [B2]
+      x-features: [F-SCOPE-05]
+      x-week: 2주 (화면 연결 3주)
+      x-jira: [S15P31A107-179, S15P31A107-139]
+      responses:
+        '200':
+          description: 이번 회차 API 목록
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PrepareApis' }
+        '401': { $ref: '#/components/responses/NotLoggedIn' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /api/runs/prepare/{id}/scope:
+    parameters: [{ $ref: '#/components/parameters/RunId' }]
+    get:
+      tags: [④ 화면]
+      operationId: getScope
+      summary: 4 검사 범위 카드 · 예상치
+      description: 재검사면 기본값 = AI 추천 + 지난 선택(run_scope)
+      x-owner: [B2]
+      x-features: [F-SCOPE-01, F-SCOPE-06, F-SCOPE-07]
+      x-week: 1주 (지난 선택 2주)
+      x-jira: [S15P31A107-130, S15P31A107-138]
+      responses:
+        '200':
+          description: 범위
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Scope' }
+        '401': { $ref: '#/components/responses/NotLoggedIn' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    put:
+      tags: [④ 화면]
+      operationId: putScope
+      summary: 4 범위 저장 — 켜고 끄기 · 팝업 값 · 직접 추가
+      description: 바뀐 것만 보내도 된다(`params`는 먼저 바꾼 값 위에 합친다). 응답은 다시 계산한 범위 전체(예상 요청 수 = (시작+끝)÷2 × 분 × 60 × 1.6). 준비가 끝난(ready) 회차만 바꿀 수 있고, 없거나 ready가 아니면 404. 영역 스위치 → 카드 → 직접 추가 순서로 적용하고 안 맞으면 아무것도 저장하지 않는다. `params`는 그 시나리오 도구의 칸만 받는다(성능 PerfParams의 범위 · 보안 `range` · 코드 `severity`). 칸이 틀리거나 범위 밖이면 400 `BAD_REQUEST`. 도구가 `ddalkkak`인 카드는 원래 칸만 받는다 — 권한 점검(`idCount`) 카드에 `count`, 테스트 계정(`count`) 카드에 `idCount`를 보내면 400 `BAD_REQUEST`(합친 값에 두 칸이 같이 남지 않는다, S15P31A107-188). 세기 4단계 · "AI 추천으로" · "도구 기본값으로"는 화면이 숫자로 풀어 보낸다
+      x-owner: [B2]
+      x-features: [F-SCOPE-02, F-SCOPE-03, F-SCOPE-04, F-SCOPE-05, F-SCOPE-06]
+      x-week: 1주 켜고 끄기·예상치 / 2주 팝업 값·직접 추가
+      x-jira: [S15P31A107-130, S15P31A107-138, S15P31A107-188]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ScopeInput' }
+            example:
+              areas: { perf: true, sec: true, code: true }
+              items: [{ key: perf-1, included: true, params: { usersFrom: 100, usersTo: 500, durationMin: 3, shape: ramp, failP95Ms: 500, failErrorRate: 0.01 } }]
+              added: []
+      responses:
+        '200':
+          description: 다시 계산한 범위
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Scope' }
+        '400':
+          description: 범위가 맞지 않음
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              examples:
+                none: { value: { code: NO_ITEMS, message: 항목을 하나 이상 골라 주세요 } }
+                range: { value: { code: INVALID_RANGE, message: 시작 사람 수가 끝보다 많아요 } }
+                target: { value: { code: NO_TARGET, message: 대상 API를 골라 주세요 } }
+                bad: { value: { code: BAD_REQUEST, message: 요청 형식을 확인해 주세요 }, summary: '모르는 카드 key · items 원소가 null · 사람 수 · 분이 숫자가 아님 · 권한 점검 카드에 count · 테스트 계정 카드에 idCount' }
+        '401': { $ref: '#/components/responses/NotLoggedIn' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /api/runs/prepare/{id}/auth:
+    parameters: [{ $ref: '#/components/parameters/RunId' }]
+    get:
+      tags: [④ 화면]
+      operationId: getAuth
+      summary: 4 로그인 줄 — 로그인 구조 분석 · 지금 상태
+      description: >-
+        검사 대상 앱 로그인 설정(서비스마다 하나, 다음 검사에서도 그대로). 분석은 이 회차 API 목록만 보고 고객 앱에 요청하지 않는다 —
+        가입 · 로그인 API는 테스트 계정과 같은 이름 규칙(scan.md §7), `fields`는 로그인 API의 body 칸 이름(칸 정보가 없으면 흔한 칸
+        `email` · `username` · `password`를 싣고 `fieldsGuessed: true`). 로그인 값의 자리(`tokenAt`)는 요청 없이는 알 수 없어 계정으로
+        확인할 때 첫 로그인 응답에서 정한다. `state`가 `none`이면 확인 전 — 검사는 고객 앱에 가입 · 로그인 요청을 보내지 않고 로그인이
+        필요한 시나리오는 미검사(계정 없음). `expired`(거절된 토큰 · 쿠키, 다시 로그인하지 못한 계정)와 `key_lost`(master.key가 바뀌어
+        저장한 값을 지움)는 다시 등록해 달라는 상태. 값은 내주지 않고 가린 `hint`만 준다. 마지막으로 쓴 지 30일이 지나면 지워져 `none`이 된다
+      x-owner: [B3]
+      x-features: [F-SCOPE-09, F-RUN-03]
+      x-week: 3주
+      x-jira: [S15P31A107-230]
+      responses:
+        '200':
+          description: 로그인 설정
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthSetting' }
+              examples:
+                none:
+                  summary: 확인 전
+                  value: { state: none, analysis: { loginApi: POST /api/auth/login, signupApi: POST /api/auth/signup, fields: [email, password], fieldsGuessed: false }, mode: null, hint: null, tokenAt: null, lastUsedAt: null }
+                ok:
+                  summary: 딸깍이 만든 계정으로 확인함
+                  value: { state: ok, analysis: { loginApi: POST /api/auth/login, signupApi: POST /api/auth/signup, fields: [email, password], fieldsGuessed: false }, mode: account, hint: dd…7f2a, tokenAt: body.token, lastUsedAt: '2026-11-12T14:20:00+09:00' }
+                expired:
+                  summary: 등록한 토큰이 거절됨 — 다시 넣어 달라고 한다
+                  value: { state: expired, analysis: { loginApi: POST /api/auth/login, signupApi: POST /api/auth/signup, fields: [email, password], fieldsGuessed: false }, mode: token, hint: …a1b2, tokenAt: null, lastUsedAt: '2026-11-12T14:20:00+09:00' }
+                key_lost:
+                  summary: master.key가 바뀌어 저장한 값을 지움
+                  value: { state: key_lost, analysis: { loginApi: POST /api/auth/login, signupApi: POST /api/auth/signup, fields: [email, password], fieldsGuessed: false }, mode: cookie, hint: 'SESSION=****', tokenAt: null, lastUsedAt: '2026-11-12T14:20:00+09:00' }
+        '401': { $ref: '#/components/responses/NotLoggedIn' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    put:
+      tags: [④ 화면]
+      operationId: putAuth
+      summary: 4 로그인 확인 · 등록 — 계정 · 토큰 · 쿠키
+      description: >-
+        사용자가 분석 결과를 보고 [확인]해야 처음으로 고객 앱에 로그인 요청을 보낸다. 계정(`mode: account`)은 그 자리에서 로그인해 값의
+        자리를 찾는다 — `create: true`면 딸깍이 `ddalkkak-test-xxxx` 계정을 가입시키고, 아니면 사용자가 준 아이디 · 비밀번호로 로그인만 한다.
+        토큰 · 쿠키는 요청 없이 저장한다(`Bearer ` · `Cookie:` 앞머리는 떼어 낸다). 값은 master.key로 암호화해 서비스마다 하나 저장하고 다음
+        검사에서 다시 쓴다(다시 보내면 덮는다). 확인한 뒤에는 방식과 상관없이 검사 때 권한 점검용 테스트 계정도 만든다. 비었거나 줄바꿈 등
+        제어 문자가 있거나 4096바이트를 넘으면 400 `BAD_REQUEST`. 로그인 · 가입 API가 없으면 400 `NO_LOGIN_API`, 로그인이 거절되거나 값이
+        없으면 400 `TARGET_LOGIN_FAILED`(401은 화면이 관리자 로그아웃으로 보니 쓰지 않는다), 앱이 꺼져 있으면 409 `SERVICE_OFFLINE`.
+        `create: true`인데 고객 앱 가입이 4xx면 400 `TARGET_SIGNUP_FAILED` — message가 고정 문구 뒤에 ` · 앱 응답 {상태}: {앱 문구}`를
+        붙인다(앱 응답의 errors[] · message · error · detail · title 중 문구, 보낸 비밀번호는 `****`, 200자까지, -261). 가입 5xx는 `TARGET_LOGIN_FAILED`
+      x-owner: [B3]
+      x-features: [F-SCOPE-09, F-RUN-03]
+      x-week: 3주
+      x-jira: [S15P31A107-230, S15P31A107-261]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AuthInput' }
+            examples:
+              create: { summary: 딸깍이 테스트 계정 만들기, value: { mode: account, create: true } }
+              account: { summary: 내 계정, value: { mode: account, username: me@shop.com, password: '********' } }
+              token: { summary: 토큰 직접 등록, value: { mode: token, token: 'eyJhbGciOi…' } }
+              cookie: { summary: 쿠키 직접 등록, value: { mode: cookie, cookie: 'SESSION=3f9a…' } }
+      responses:
+        '200':
+          description: 저장한 로그인 설정
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthSetting' }
+              example: { state: ok, analysis: { loginApi: POST /api/auth/login, signupApi: POST /api/auth/signup, fields: [email, password], fieldsGuessed: false }, mode: account, hint: me….com, tokenAt: body.token, lastUsedAt: '2026-11-12T14:20:00+09:00' }
+        '400':
+          description: 넣은 값이 틀렸거나 로그인하지 못함
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              examples:
+                noLogin: { value: { code: NO_LOGIN_API, message: 가입 · 로그인 API를 찾지 못했어요 · 토큰이나 쿠키를 넣어 주세요 } }
+                failed: { value: { code: TARGET_LOGIN_FAILED, message: 로그인하지 못했어요 · 아이디 · 비밀번호를 확인하거나 토큰 · 쿠키를 넣어 주세요 } }
+                signupFailed: { summary: '딸깍이 계정 가입을 앱이 거절 — 앱 문구가 뒤에 붙는다', value: { code: TARGET_SIGNUP_FAILED, message: '테스트 계정을 만들지 못했어요 · 가입 규칙을 확인하거나 내 계정 · 토큰 · 쿠키를 넣어 주세요 · 앱 응답 400: 닉네임은 필수입니다' } }
+                bad: { value: { code: BAD_REQUEST, message: 요청 형식을 확인해 주세요 }, summary: '모르는 mode · 빈 값 · 줄바꿈 · 4096바이트 넘음 · = 없는 쿠키' }
+        '401': { $ref: '#/components/responses/NotLoggedIn' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: 앱이 꺼져 있어 로그인할 수 없음
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              example: { code: SERVICE_OFFLINE, message: 앱이 꺼져 있어요 }
+
+  # ───────────────────────── ④ 실행 ─────────────────────────
+  /api/runs:
+    get:
+      tags: [④ 화면]
+      operationId: listRuns
+      summary: 8 이력 · 점수 변화
+      description: 지금 연결된 서비스(해제하지 않은 줄)의 끝난 회차. 연결된 서비스가 없으면(해제 뒤) 빈 목록이다. 해제한 서비스의 회차는 지우지 않고 결과(`GET /api/runs/{id}`)는 계속 열리며, 같은 앱을 다시 허용하면 다시 보인다(-223)
+      x-owner: [B2]
+      x-features: [F-HIST-01, F-HIST-02]
+      x-week: 1주 API / 2주 화면 / 3주 점수 변화
+      x-jira: [S15P31A107-128, S15P31A107-145, S15P31A107-232, S15P31A107-237]
+      parameters:
+        - { name: limit, in: query, schema: { type: integer, default: 20, maximum: 100 } }
+      responses:
+        '200':
+          description: 최신순 회차 + 최근 4번 영역별 점수
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RunList' }
+        '401': { $ref: '#/components/responses/NotLoggedIn' }
+    post:
+      tags: [④ 화면]
+      operationId: startRun
+      summary: 4 "딸깍" — 검사 시작
+      description: 순서는 연결 확인 → 테스트 계정 → 1 보안(ZAP) → 2 성능(k6) → 3 코드 품질(Semgrep, 코드 있을 때만) → 결과 정리. 한 단계가 실패해도 다음으로 가고 실패한 항목은 미검사(사유)
+      x-owner: [B3]
+      x-features: [F-SCOPE-08]
+      x-week: 2주
+      x-jira: [S15P31A107-134]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RunIdOnly' }
+            example: { runId: run_5 }
+      responses:
+        '200':
+          description: 시작함 → 화면 5
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RunIdOnly' }
+              example: { runId: run_5 }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/NotLoggedIn' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/RunInProgress' }
+  /api/runs/{id}/events:
+    parameters: [{ $ref: '#/components/parameters/RunId' }]
+    get:
+      tags: [④ 화면]
+      operationId: runEvents
+      summary: 5 진행 실시간 (SSE)
+      description: |
+        이벤트 4종(progress · log · error · done). 연결이 끊기면 `GET /api/runs/{id}/progress`로 지금 상태를 받고 다시 붙는다.
+        ```
+        event: progress
+        data: {"pct":42,"leftMin":13,"step":"perf","item":"perf-2"}
+        ```
+        이벤트마다 `data` 한 줄 JSON, 4종의 예시는 아래 examples(이름 = event). 단계 트리(완료 · 건너뜀 사유)는 이벤트에 없으니 화면 5에 들어올 때와 progress 이벤트의 `step`·`item`이 바뀔 때 `GET /api/runs/{id}/progress`로 받는다. `error`는 도구가 도는 동안 딸깍이 따로 부른 그 시나리오 API가 30초 넘게 응답 없기를 3번 연속하면(`text: 서버가 응답을 멈췄어요`), 또는 도구가 돌지 못해(도구 받기 실패 · 도구 오류) 자동으로 한 번 더 돌려도 또 실패하면(`text: 검사 도구가 실패했어요 · 도구 오류`, -228) 보낸다 — 도구 컨테이너를 멈추고 retry · finish-partial · stop 중 고를 때까지 기다린다(scan.md §8). 기다리는 동안 다시 붙으면 progress 뒤에 그 error를 다시 받는다. `done`은 결과 저장이 끝난 뒤(B2).
+      x-owner: [B3]
+      x-features: [F-RUN-10, F-STOP-02, F-STOP-04]
+      x-week: 1주 화면(가짜 이벤트) / 2주 연결 / 3주 error
+      x-jira: [S15P31A107-131, S15P31A107-134, S15P31A107-143, S15P31A107-228]
+      responses:
+        '200':
+          description: 이벤트 스트림. data 모양은 아래 schema
+          content:
+            text/event-stream:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/ProgressEvent'
+                  - $ref: '#/components/schemas/LogLine'
+                  - $ref: '#/components/schemas/StopEvent'
+                  - $ref: '#/components/schemas/DoneEvent'
+              examples:
+                progress: { value: { pct: 42, leftMin: 13, step: perf, item: perf-2 } }
+                log: { value: { ts: '2026-11-07T14:40:31+09:00', tag: k6, text: 'vus=120 · http_req_duration p(95)=2.1s' } }
+                error:
+                  value:
+                    step: perf
+                    item: perf-2
+                    title: 주문 상세 피크
+                    ts: '2026-11-07T14:41:08+09:00'
+                    text: 서버가 응답을 멈췄어요
+                    lines:
+                      - '14:40:38 [k6] GET /api/orders/{id} 30s 초과 (1/3)'
+                      - '14:40:53 [k6] GET /api/orders/{id} 30s 초과 (2/3)'
+                      - '14:41:08 [k6] GET /api/orders/{id} 30s 초과 (3/3) · 도구 일시정지'
+                done: { value: { status: done } }
+        '401': { $ref: '#/components/responses/NotLoggedIn' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /api/runs/{id}/progress:
+    parameters: [{ $ref: '#/components/parameters/RunId' }]
+    get:
+      tags: [④ 화면]
+      operationId: getRunProgress
+      summary: 5 지금 상태 스냅샷 (다시 붙을 때)
+      x-owner: [B3]
+      x-features: [F-RUN-10]
+      x-week: 1주 화면(가짜) / 2주 연결
+      x-jira: [S15P31A107-134, S15P31A107-131]
+      responses:
+        '200':
+          description: 진행률 · 단계 트리 · 최근 로그 200줄
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RunProgress' }
+        '401': { $ref: '#/components/responses/NotLoggedIn' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /api/runs/{id}/stop:
+    parameters: [{ $ref: '#/components/parameters/RunId' }]
+    post:
+      tags: [④ 화면]
+      operationId: stopRun
+      summary: 5 중단 ("중단" · 오류 팝업 "중단")
+      description: 도구 컨테이너를 멈추고 여기까지 결과를 저장한다. 결과 정리 · 회차 상태는 B2 `RunLifecycle.onScanFinished(STOPPED)` (docs/run-flow.md §1). 응답은 지금 회차 상태라 보통 running이다 — 결과 정리(AI 해석 · 저장, 최대 약 2분 20초)가 끝나야 stopped가 되고 SSE `done`으로 알린다. 그동안 목록에도 running이고 새 검사는 409라, 화면은 `done`을 받고 넘어간다. 이미 결과 정리 중이면 멈추지 않는다
+      x-owner: [B3]
+      x-features: [F-RUN-11, F-STOP-03]
+      x-week: 1주 화면(가짜) / 2주 연결
+      x-jira: [S15P31A107-134]
+      responses:
+        '200':
+          description: 지금 회차 상태 (stopped는 결과 정리 뒤 SSE done으로)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RunStatusOk' }
+              examples:
+                running:
+                  summary: 결과 정리 중 — 보통. 화면은 SSE done을 기다린다
+                  value: { status: running }
+                stopped:
+                  summary: 이미 정리가 끝남 — 화면은 바로 1로. 가짜 모드는 이것을 쓴다 (중단 → 1)
+                  value: { status: stopped }
+        '401': { $ref: '#/components/responses/NotLoggedIn' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /api/runs/{id}/retry:
+    parameters: [{ $ref: '#/components/parameters/RunId' }]
+    post:
+      tags: [④ 화면]
+      operationId: retryRun
+      summary: 5 오류 팝업 "다시 시도" — 멈춘 · 실패한 항목부터
+      description: SSE `error`로 기다리는 회차만 받는다(서버 응답 멈춤 · 도구 실패 -228). 그 시나리오의 결과를 지우고 처음부터 다시 돈 뒤 남은 시나리오를 잇는다. 또 멈추거나 실패하면 `error`가 다시 온다(도구 실패의 자동 한 번 더는 회차마다 시나리오당 한 번이라 다시 시도 뒤에는 바로 `error`). 응답은 지금 회차 상태(running). 기다리는 회차가 아니면 404
+      x-owner: [B3]
+      x-features: [F-STOP-03, F-STOP-04]
+      x-week: 3주
+      x-jira: [S15P31A107-143, S15P31A107-228]
+      responses:
+        '200': { description: 바뀐 회차 상태, content: { application/json: { schema: { $ref: '#/components/schemas/RunStatusOk' }, example: { status: running } } } }
+        '401': { $ref: '#/components/responses/NotLoggedIn' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /api/runs/{id}/finish-partial:
+    parameters: [{ $ref: '#/components/parameters/RunId' }]
+    post:
+      tags: [④ 화면]
+      operationId: finishRunPartial
+      summary: 5 오류 팝업 · 1 · 5 "이어서 검사할까요?"의 "여기까지 결과 보기" — 일부 완료
+      description: >-
+        SSE `error`로 기다리는 회차(서버 응답 멈춤 · 도구 실패), 또는 딸깍이 다시 켜져 멈춘 회차(홈 `run.state: interrupted`, -228)만 받는다. 남은 시나리오는 `중단됨`으로 두고(통과로 세지 않는다) 여기까지 결과로 결과 정리(`/ai/reports`)를 하고 회차는 partial. 다시 켜져 멈춘 회차는 도구를 띄우지 않고 그때까지 남은 줄로 정리한다. 응답은 stop과 같이 지금 회차 상태(보통 running) — 정리가 끝나면 SSE `done`(status partial)이 온다. 기다리는 회차가 아니면 404, 다시 켜져 멈춘 회차인데 같은 서비스가 검사 중이면 409 `RUN_IN_PROGRESS`(이어서 검사와 같다). 멈춤 · 도구 실패 팝업에서 30분 동안 아무것도 고르지 않아도 이것과 같다
+      x-owner: [B3]
+      x-features: [F-STOP-03, F-STOP-05]
+      x-week: 3주
+      x-jira: [S15P31A107-143, S15P31A107-228]
+      responses:
+        '200':
+          description: 지금 회차 상태 (partial은 결과 정리 뒤 SSE done으로)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RunStatusOk' }
+              examples:
+                running:
+                  summary: 결과 정리 중 — 보통. 화면은 SSE done을 기다린다
+                  value: { status: running }
+                partial:
+                  summary: 이미 정리가 끝남 — 화면은 바로 6으로. 가짜 모드는 이것을 쓴다
+                  value: { status: partial }
+        '401': { $ref: '#/components/responses/NotLoggedIn' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/RunInProgress' }
+  /api/runs/resume:
+    post:
+      tags: [④ 화면]
+      operationId: resumeRun
+      summary: 1 · 5 "이어서 검사할까요?" → 이어서 검사 — 멈춘 시나리오부터
+      description: >-
+        딸깍이 다시 켜져 멈춘 회차(홈 `run.state: interrupted`)만 받는다. 끝난 시나리오는 다시 돌리지 않고 멈춘 시나리오부터 잇는다 —
+        도구를 중간부터 잇지는 못해 멈춘 시나리오는 처음부터, 코드 품질은 하나라도 끝나지 않았으면 묶음째 다시. 테스트 계정은 새로 만들지 않고
+        그 회차가 만든 계정으로 다시 로그인한다. 회차는 다시 running이 되고 화면은 5로 가서 SSE를 붙인다. 끝 상태는 결과 정리 뒤 SSE `done`.
+        기다리는 회차가 아니면(끝난 회차 · 그 뒤에 같은 서비스의 다른 검사가 끝남) 404, 같은 서비스가 검사 중이면 409 `RUN_IN_PROGRESS`,
+        그 회차의 앱이 지금 연결돼 있지 않으면(꺼짐 · 다른 앱) 409 `SERVICE_OFFLINE`. "여기까지 결과 보기"는 `POST /api/runs/{id}/finish-partial`.
+        본문은 시작(`POST /api/runs`)과 같은 `{runId}` — `/api/runs/{id}/resume`이면 `/api/runs/prepare/{id}`와 경로가 모호해져서다
+      x-owner: [B2]
+      x-features: [F-STOP-05]
+      x-week: 3주
+      x-jira: [S15P31A107-228]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RunIdOnly' }
+            example: { runId: run_6 }
+      responses:
+        '200': { description: 지금 회차 상태, content: { application/json: { schema: { $ref: '#/components/schemas/RunStatusOk' }, example: { status: running } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/NotLoggedIn' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: 같은 서비스가 검사 중이거나 그 회차의 앱이 연결돼 있지 않음
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              examples:
+                running: { value: { code: RUN_IN_PROGRESS, message: 이미 검사 중이에요 } }
+                offline: { value: { code: SERVICE_OFFLINE, message: 앱이 꺼져 있어요 } }
+  /api/runs/{id}/logs:
+    parameters: [{ $ref: '#/components/parameters/RunId' }]
+    get:
+      tags: [④ 화면]
+      operationId: getRunLogs
+      summary: 도구 원문 로그 (5 "전체 로그" · 7 관측 근거)
+      x-owner: [B3]
+      x-features: [F-RES-06]
+      x-week: 3주
+      x-jira: [S15P31A107-142]
+      parameters:
+        - name: tool
+          in: query
+          required: false
+          description: 없으면 전부. LogTag에 없는 값이면 400. 권한 점검 · 테스트 계정 만들기(시나리오 tool `ddalkkak`, 가입 거절 문구 -261)의 로그는 `auth`. `check` · `db`는 원본 로그 파일이 없어 늘 빈 값(진행 로그는 SSE · `/progress`)
+          schema: { $ref: '#/components/schemas/LogTag' }
+      responses:
+        '200':
+          description: 도구가 뱉은 원문 그대로(시각 · 태그를 붙이지 않음, 시나리오마다 `== {itemKey} … · exit=N` 머리줄. Semgrep은 코드 품질 시나리오를 한 번에 돌려 키를 쉼표로 묶은 머리줄 하나 — `== code-1,code-2 · exit=N`). tool이 없으면 원문이 있는 도구마다 `### {tool}` 머리줄을 달아 이어 붙인다. 도구 출력은 앞 200줄 · 끝 2000줄(scan.md §2-1 · §8)
+          content:
+            text/plain:
+              schema: { type: string }
+              example: |
+                ### k6
+                == perf-1 GET /api/orders · exit=0
+                running (1m00.0s), 000/200 VUs, 12000 complete and 0 interrupted iterations
+                http_req_duration..............: avg=212.4ms p(95)=487.2ms
+                ### auth
+                == sec-3 · 권한 점검
+                [auth] 로그인 없이 관리자 GET /api/admin/users · 200 → 뚫림
+                ### semgrep
+                == code-1,code-2 · exit=1
+                Ran 113 rules on 14 files: 3 findings.
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/NotLoggedIn' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  # ───────────────────────── ④ 결과 · 요청문 ─────────────────────────
+  /api/runs/{id}:
+    parameters: [{ $ref: '#/components/parameters/RunId' }]
+    get:
+      tags: [④ 화면]
+      operationId: getRun
+      summary: 6 결과 요약 (8 · 1 상단 검사 상태 칩(-214)에서 여는 것도 같은 것)
+      description: >-
+        ③ 응답을 B2가 저장한 것 + 회차 정보. AI 서버가 두 번 다 답하지 않았으면 `reportError` → 화면 "해석하지 못했어요 · 다시 해석".
+        열면(6 · 8 · 1 상단 검사 상태 칩(-214) 어디서든) 서버가 그 회차를 본 것으로 표시해 `GET /api/home`의 `run.state`가 `done`에서 `none`이 된다(-214)
+      x-owner: [B2]
+      x-features: [F-RES-01, F-RES-02, F-HIST-03]
+      x-week: 1주 API / 2주 화면
+      x-jira: [S15P31A107-128, S15P31A107-139, S15P31A107-232, S15P31A107-237]
+      responses:
+        '200':
+          description: 결과
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RunResult' }
+        '401': { $ref: '#/components/responses/NotLoggedIn' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [④ 화면]
+      operationId: renameRun
+      summary: 8 · 6 프로젝트 이름 고치기
+      description: 그 회차의 프로젝트 이름만 바꾼다(F-HIST-05). 회차마다 따로 저장하므로 같은 서비스의 다른 회차 이름과 연결된 서비스 이름(`service`)은 그대로다. 바꾼 뒤 `GET /api/runs` · `GET /api/runs/{id}`가 새 이름을 주고 새로고침해도 남는다. `GET /api/runs/{id}`처럼 **끝난 회차**(done · partial · stopped)만 받는다 — 없거나 아직 끝나지 않은 회차(preparing · ready · running · failed)는 404(화면 6 · 8도 끝난 회차만 보여 준다)
+      x-owner: [B2]
+      x-features: [F-HIST-05]
+      x-week: 3주
+      x-jira: [S15P31A107-232, S15P31A107-237]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ProjectNameInput' }
+      responses:
+        '200':
+          description: 저장한 이름(앞뒤 공백을 뗀 값)
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [runId, projectName]
+                properties:
+                  runId: { type: string }
+                  projectName: { $ref: '#/components/schemas/ProjectName' }
+              example: { runId: run_5, projectName: 주문 서비스 v2 }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/NotLoggedIn' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /api/runs/{id}/report:
+    parameters: [{ $ref: '#/components/parameters/RunId' }]
+    post:
+      tags: [④ 화면]
+      operationId: retryReport
+      summary: 6 "다시 해석" — 결과 원본을 다시 /ai/reports로
+      x-owner: [B2]
+      x-features: [F-RPT-03]
+      x-week: 2주
+      x-jira: [S15P31A107-136]
+      responses:
+        '200':
+          description: 다시 해석한 결과
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RunResult' }
+        '401': { $ref: '#/components/responses/NotLoggedIn' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '503':
+          description: AI 서버가 또 답하지 않음
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              example: { code: AI_UNAVAILABLE, message: 해석하지 못했어요 · 다시 해석해 주세요 }
+  /api/runs/{id}/issues/{issueId}:
+    parameters:
+      - $ref: '#/components/parameters/RunId'
+      - { name: issueId, in: path, required: true, schema: { type: string }, example: p2 }
+    get:
+      tags: [④ 화면]
+      operationId: getIssue
+      summary: 7 문제 상세
+      description: >-
+        재현 조건의 사람 수 · 시간 · 모양 · 주소는 이 회차 검사 범위(`ScenarioStore.scope`)의 그 시나리오에서, 테스트 계정 · 관측 근거 로그는 B3 `Repro.of(runId, itemKey)`에서. 관련 코드는 코드 연결이 있을 때만(`code: null`이면 접힘 숨김)
+      x-owner: [B2]
+      x-features: [F-RES-03, F-RES-04, F-RES-05]
+      x-week: 1주 API / 2주 진짜 데이터 / 3주 코드 위치
+      x-jira: [S15P31A107-128, S15P31A107-137, S15P31A107-144]
+      responses:
+        '200':
+          description: 문제 1건
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/IssueDetail' }
+              examples:
+                noCode:
+                  summary: 코드 연결 없이 검사 → 관련 코드 접힘 숨김 (code null)
+                  value:
+                    { id: s1, itemKey: sec-2, area: sec, level: danger, certainty: confirmed, title: 검색어 하나로 모든 주문이 보여요, tech: SQL 문자열 연결 · GET /api/orders,
+                      impact: 누구나 다른 사람의 주문을 꺼내 볼 수 있어요, asIs: { value: 뚫림, label: "검색어 ' OR 1=1 -- 입력 시 전체 주문" }, toBe: { value: 막힘, label: 같은 입력에 빈 결과 },
+                      metrics: [{ name: 뚫린 입력값, now: 1곳, target: 0곳 }], suspectReason: null, where: GET /api/orders, cause: 검색어를 SQL 문장에 그대로 이어 붙여요,
+                      fix: { recommended: 바인딩 파라미터(?)로 바꾸기, alternative: JPA 메서드 쿼리로 바꾸기 }, passCriteria: ZAP SQL 인젝션 경고 0건, penalty: 30,
+                      api: GET /api/orders, code: null, evidence: ['[zap] scan complete · alerts=6 high=1'],
+                      repro: { usersFrom: null, usersTo: null, durationMin: null, shape: null, api: GET /api/orders, testAccount: ddalkkak-test-7f2a }, prev: null, next: p1 }
+        '401': { $ref: '#/components/responses/NotLoggedIn' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /api/runs/{id}/prompts:
+    parameters: [{ $ref: '#/components/parameters/RunId' }]
+    post:
+      tags: [④ 화면]
+      operationId: makePrompt
+      summary: 6·7 수정 요청문 만들기 → /ai/prompts (저장 안 함)
+      description: >-
+        고른 문제(`issueIds`, 고른 순서 · 같은 id는 한 번만)를 ③ Issue 모양으로 묶어 `/ai/prompts`로 보내고 `text`만 돌려준다. 한 건이고 코드 위치를 찾았으면 관련 코드(`code`)를 같이, `includeLogs`가 true면 문제마다 관측 근거 로그를 붙인다. `includeLogs`가 없으면 false. 요청문은 어디에도 저장하지 않는다. "다시 생성" · 7 "원본 로그 추가 ▸"도 같은 엔드포인트를 다시 부른다. 끝난 회차가 아니거나 이 회차에 없는 문제 id가 섞여 있으면 404, 본문 모양이 틀리면 400 `BAD_REQUEST`, AI 서버가 답하지 않으면 다시 하지 않고 500 `SERVER_ERROR`
+      x-owner: [B2]
+      x-features: [F-PROMPT-02, F-PROMPT-04]
+      x-week: 3주
+      x-jira: [S15P31A107-146]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [issueIds]
+              properties:
+                issueIds:
+                  type: array
+                  minItems: 1
+                  items: { type: string }
+                includeLogs: { type: boolean }
+            examples:
+              bundle: { summary: 6 담은 문제 묶음, value: { issueIds: [p2, s1, c1], includeLogs: false } }
+              single: { summary: 7 한 건 · 원본 로그 추가, value: { issueIds: [p2], includeLogs: true } }
+      responses:
+        '200':
+          description: 요청문
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [text]
+                properties:
+                  text: { type: string }
+              example:
+                text: "Spring Boot 3.2에서 아래 3개 문제를 고쳐 주세요.\n\n① [보안 · 위험] 검색어 하나로 모든 주문이 보여요 — GET /api/orders · OrderRepository.java:31 · 검색어 ' OR 1=1 -- 입력 시 전체 주문 뚫림 → 막힘\n② [코드 품질 · 주의] 결제 오류를 조용히 삼켜요 — PaymentService.java:113 · 빈 catch 블록 1곳 → 0곳\n③ [성능 · 주의] 주문 목록이 DB를 반복 호출해요 — GET /api/orders · OrderService.java:48 · 느린 요청 p95 · 50명 487ms → 500ms 이내 · 정황: 요청당 DB 쿼리 1,240회(N+1 의심)\n\n고치는 순서: ① → ② → ③\n요구사항: 항목별 원인 확인 → 수정 → 회귀 테스트 · 서로 영향 주는 변경은 먼저 알려 주세요"
+        '400': { $ref: '#/components/responses/NoItems' }
+        '401': { $ref: '#/components/responses/NotLoggedIn' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+components:
+  securitySchemes:
+    session:
+      type: apiKey
+      in: cookie
+      name: DDALKKAK_SESSION
+
+  parameters:
+    StarterToken: { name: X-Ddalkkak-Token, in: header, required: true, description: '허용 때 heartbeat 응답으로 받은 서비스 토큰 (-211). 딸깍은 SHA-256 해시만 저장한다', schema: { type: string } }
+    StarterTokenOptional: { name: X-Ddalkkak-Token, in: header, required: false, description: '저장해 둔 서비스 토큰. 허용 전 · 토큰을 아직 못 받았으면 없음', schema: { type: string } }
+    RunId: { name: id, in: path, required: true, description: runId, schema: { type: string }, example: run_5 }
+    RequestId: { name: id, in: path, required: true, description: 연결 요청 id, schema: { type: string }, example: req_7f2a }
+    ServiceId: { name: id, in: path, required: true, description: 서비스 id (`GET /api/home`의 `service.id`), schema: { type: string }, example: svc_1 }
+    AiProvider: { name: X-AI-Provider, in: header, required: false, schema: { type: string, enum: [claude, openai, custom] } }
+    AiBaseUrl: { name: X-AI-Base-Url, in: header, required: false, description: '주소(http · https). claude · openai는 없으면 공식 주소, custom은 필수. claude에 주소가 있으면 게이트웨이용으로 키를 x-api-key 헤더에도 싣는다', schema: { type: string, format: uri } }
+    AiKey: { name: X-AI-Key, in: header, required: false, schema: { type: string } }
+    AiModel: { name: X-AI-Model, in: header, required: false, schema: { type: string } }
+
+  responses:
+    StarterTokenInvalid:
+      description: 허용된 서비스인데 `X-Ddalkkak-Token`이 없거나 틀림 → 스타터킷은 저장한 토큰을 지우고 hello부터 다시
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example: { code: STARTER_TOKEN_INVALID, message: 스타터킷 토큰이 맞지 않아요 }
+    NotLoggedIn:
+      description: 세션 없음·만료 → 화면은 0-2로
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example: { code: NOT_LOGGED_IN, message: 다시 로그인해 주세요 }
+    NotFound:
+      description: 없는 id
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example: { code: NOT_FOUND, message: 찾을 수 없어요 }
+    BadRequest:
+      description: 본문이 깨졌거나 JSON이 아님 (400 · 405 · 415). 모든 /api/* 공통
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example: { code: BAD_REQUEST, message: 요청 형식을 확인해 주세요 }
+    ServerError:
+      description: 예상 못 한 서버 오류. 원인은 서버 로그에만 남는다. 모든 /api/* 공통
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example: { code: SERVER_ERROR, message: 잠시 후 다시 해 주세요 }
+    RunInProgress:
+      description: 이미 검사 중
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example: { code: RUN_IN_PROGRESS, message: 이미 검사 중이에요 }
+    NoItems:
+      description: 고른 항목이 없음
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example: { code: NO_ITEMS, message: 항목을 하나 이상 골라 주세요 }
+    InvalidUrl:
+      description: 주소 형식 틀림 (AI 주소 — http · https)
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example: { code: INVALID_URL, message: '주소를 확인해 주세요 · http(s)://…' }
+    CodeUrlInvalid:
+      description: 저장소 주소 형식 틀림 — https만, 비밀번호가 든 주소는 안 됨. AI 주소의 INVALID_URL과 문구를 가른다 (-250)
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example: { code: CODE_URL_INVALID, message: '저장소 주소를 확인해 주세요 · https://…' }
+
+  schemas:
+    Error:
+      type: object
+      required: [code, message]
+      properties:
+        code: { type: string }
+        message: { type: string, description: 화면에 그대로 보여 줄 쉬운 말 }
+
+    Area: { type: string, enum: [perf, sec, code], description: 성능 · 보안 · 코드 품질 }
+    RunStatus: { type: string, enum: [preparing, ready, running, stopped, partial, done, failed] }
+    RunStatusOk:
+      type: object
+      required: [status]
+      properties:
+        status: { $ref: '#/components/schemas/RunStatus' }
+    LogTag: { type: string, enum: [check, auth, zap, k6, db, semgrep] }
+    ToolList:
+      type: object
+      required: [tools]
+      properties:
+        tools:
+          type: array
+          items: { $ref: '#/components/schemas/Tool' }
+    Tool:
+      type: object
+      required: [name, image, state, installed, runnable, checkedAt, lastError, fix]
+      properties:
+        name: { type: string, enum: [k6, zap, semgrep] }
+        image: { type: string, description: 딸깍이 쓰는 고정 버전 이미지 }
+        state: { type: string, enum: [docker_unavailable, not_installed, not_runnable, recent_error, ok] }
+        installed: { type: boolean, description: 이미지가 docker에 있음. docker에 붙지 못하면(docker_unavailable) false }
+        runnable: { type: boolean, description: 시험 실행(도구별 버전 명령 — getTools 설명) 성공. 이미지가 없으면 false }
+        checkedAt: { type: string, format: date-time, description: 실행 가능 여부를 마지막으로 확인한 때 (10분 캐시) }
+        lastError:
+          oneOf:
+            - type: 'null'
+            - type: object
+              required: [stage, reason, cause, runId, at]
+              properties:
+                stage: { type: string, enum: [pull, run], description: 'pull = 이미지 받기 · run = 도구 실행' }
+                reason: { $ref: '#/components/schemas/SkipReason' }
+                cause: { type: string, description: 원본 로그에서 그 시나리오 구간의 끝 몇 줄 (비밀값은 ****) }
+                runId: { type: string }
+                at: { type: string, format: date-time }
+        fix: { type: [string, 'null'], description: '조치 문구. ok면 null. docker_unavailable "Docker가 켜져 있는지 확인하세요. 딸깍이 docker에 붙지 못했어요" · not_installed "첫 검사 때 받아요. 미리 받으려면 docker pull <이미지>"(받기 실패가 있으면 아래 받기 문구) · not_runnable "docker run --rm <이미지> <버전 명령> 이 실행되는지 확인하세요" · 최근 오류 받기(pull) "네트워크를 확인하고 docker pull <이미지> 로 다시 받은 뒤 재검사하세요" · 실행(run) "원본 로그를 확인하고 재검사하세요" (-244)' }
+    SkipReason:
+      type: string
+      enum: [계정 없음, 코드 없음, 대상 없음, 도구 오류, 결과 해석 실패, 중단됨, 부하를 주기 어려운 메서드, 미측정, 요청 구성 오류, 도구 받기 실패, 권한 점검 못 함, 앱 연결 끊김]
+      description: |
+        미검사 사유. 화면에 그대로 보이고 Spring이 사유별로 센다(run.skip_reason). 값은 더하기만 하고 바꾸거나 빼지 않는다(이력 호환, -235).
+        어느 값이든 AI 서버 채점은 미검사로 세고(`summary.{영역}.skip` · `skipReasons`) 통과 · 실패 · 점수에 넣지 않는다. 값마다 누가 · 언제 내는지는 scan.md §9 "미검사 사유".
+        - B3(결과 원본 `status: skipped`): 계정 없음 · 코드 없음 · 대상 없음 · 도구 오류(도구 실행 실패 — 컨테이너를 띄웠는데 비정상 종료 · 결과 파일 없음 · 도구를 띄우지 못함) · 결과 해석 실패 · 중단됨 · 부하를 주기 어려운 메서드(GET이 아닌 성능 시나리오, NF-07 마지막 방어선)
+        - B3 새 값(-235): 요청 구성 오류(필수 파라미터를 채워도 응답의 90% 이상이 400 · 404 · 422 — 딸깍이 요청을 제대로 못 만든 것이라 성능 실패가 아님, scan.md §3, -219. ZAP도 GET API를 띄우기 전 확인 요청이 400 · 404 · 422면 낸다, scan.md §4, -262) · 도구 받기 실패(도구 이미지를 받지 못해 컨테이너를 못 띄움 — `DockerTool`이 판정, -229) · 권한 점검 못 함(계정은 있는데 목록에서 id를 못 모으는 등으로 남의 데이터 보기를 못 함 — 통과로 세지 않음, -231)
+        - B3 새 값(-229): 앱 연결 끊김(검사를 시작할 때 앱이 연결돼 있지 않아 도구를 하나도 띄우지 않음 — 도구 문제가 아니라 도구 상태 최근 오류로 세지 않음. 전에는 도구 오류였다)
+        - AI 서버(채점 중 판정, F-RPT-04): 중단됨(`partial`인데 위험·주의 없음) · 미측정(성능 지표 빠짐 · `skipped`인데 사유 없음) · 결과 해석 실패(항목 채점 실패) · 코드 없음(`hasCode: false`라 코드 결과 없음) · 요청 구성 오류(ZAP이 테스트 값이 거절된 선택 쿼리를 공격하지 못했고(`metrics.unattackedQueries` 1 이상) 위험·주의가 없음, -262)
+
+    Scores:
+      type: object
+      description: 0–100. 영역 전체가 미검사면 null (화면은 "--")
+      required: [perf, sec, code]
+      properties:
+        perf: { type: [integer, 'null'], minimum: 0, maximum: 100 }
+        sec: { type: [integer, 'null'], minimum: 0, maximum: 100 }
+        code: { type: [integer, 'null'], minimum: 0, maximum: 100 }
+    AreaCounts:
+      type: object
+      required: [perf, sec, code]
+      properties:
+        perf: { type: integer }
+        sec: { type: integer }
+        code: { type: integer }
+
+    ServiceRef:
+      type: object
+      required: [name, framework]
+      properties:
+        name: { type: string, example: order-api }
+        framework: { type: string, example: Spring Boot 3.2 }
+
+    Health:
+      type: object
+      required: [cpu, mem, disk, uptimeSec]
+      properties:
+        cpu: { type: number, minimum: 0, maximum: 1 }
+        mem:
+          type: object
+          required: [usedMb, totalMb]
+          properties: { usedMb: { type: integer }, totalMb: { type: integer } }
+        disk:
+          type: object
+          required: [usedGb, totalGb]
+          properties: { usedGb: { type: integer }, totalGb: { type: integer } }
+        uptimeSec: { type: integer }
+
+    HelloRequest:
+      type: object
+      required: [appName, framework, frameworkVersion, javaVersion, buildTool, starterVersion, host, port, pid, runningCommit]
+      properties:
+        appName: { type: string }
+        framework: { type: string }
+        frameworkVersion: { type: string }
+        javaVersion: { type: string }
+        buildTool: { type: string }
+        starterVersion: { type: string }
+        host: { type: string }
+        port: { type: integer }
+        pid: { type: integer }
+        runningCommit: { type: [string, 'null'], description: git.properties가 없으면 null → 버전 비교 없이 진행 }
+        artifact: { type: [string, 'null'], description: '실행 중인 jar · war 절대 경로(`java -jar`로 띄웠을 때). IDE · bootRun처럼 파일 하나로 뜨지 않았거나, 그 jar의 매니페스트에 `Main-Class` · `Start-Class`가 없으면(IntelliJ가 만든 클래스패스용 jar) null. 디컴파일 후보(F-CODE-05)에 쓴다. 옛 스타터킷은 보내지 않아 null로 본다. 1024자(service.artifact 칸)를 넘으면 hello를 거절하지 않고 null로 본다 (-224)' }
+        workDir: { type: [string, 'null'], description: '앱의 작업 폴더(`user.dir`) 절대 경로. 이 폴더와 그 아래에서 jar · war 후보를 찾는다. 옛 스타터킷은 보내지 않아 null로 본다. 1024자(service.work_dir 칸)를 넘으면 hello를 거절하지 않고 null로 본다 (-224)' }
+      example:
+        appName: order-api
+        framework: Spring Boot
+        frameworkVersion: 3.2.5
+        javaVersion: '17'
+        buildTool: Gradle
+        starterVersion: 1.4.0
+        host: localhost
+        port: 8080
+        pid: 41822
+        runningCommit: a3f9c1
+        artifact: /home/me/order-api/build/libs/order-api.jar
+        workDir: /home/me/order-api
+    HeartbeatRequest:
+      allOf:
+        - type: object
+          required: [requestId, serviceId]
+          properties:
+            requestId: { type: string }
+            serviceId: { type: [string, 'null'], description: 허용 전에는 null }
+        - $ref: '#/components/schemas/Health'
+      example:
+        requestId: req_7f2a
+        serviceId: svc_1
+        cpu: 0.23
+        mem: { usedMb: 5018, totalMb: 8192 }
+        disk: { usedGb: 38, totalGb: 80 }
+        uptimeSec: 309600
+    HeartbeatResponse:
+      type: object
+      required: [status, serviceId, commands]
+      properties:
+        status: { type: string, enum: [pending, approved, ignored], description: 'ignored를 받아도 같은 요청으로 신호를 계속 보낸다 — 0-3 ② "다시 찾기"가 되살리면 pending(-251). v1.2.2까지 스타터킷은 앱이 다시 켜질 때까지 멈췄다' }
+        serviceId: { type: [string, 'null'], description: approved일 때만 값 }
+        token: { type: string, description: '막 허용됐을 때만 있다. 이 토큰을 실은 신호가 올 때까지 매번 실린다 (-211)' }
+        commands:
+          type: array
+          items:
+            type: object
+            required: [type]
+            properties:
+              type: { type: string, enum: [SEND_APIS, MEASURE_START, MEASURE_STOP] }
+              snapshotId: { type: string, description: SEND_APIS }
+              runId: { type: string, description: MEASURE_START · MEASURE_STOP }
+              intervalSec: { type: integer, description: MEASURE_START }
+      example:
+        status: approved
+        serviceId: svc_1
+        commands:
+          - { type: SEND_APIS, snapshotId: snap_12 }
+          - { type: MEASURE_START, runId: run_5, intervalSec: 1 }
+
+    ApiEndpoint:
+      type: object
+      description: 실제 데이터 값 없이 모양만
+      required: [method, path, params, auth, handler, calls]
+      properties:
+        method: { type: string, enum: [GET, POST, PUT, PATCH, DELETE] }
+        path: { type: string, pattern: '^/', maxLength: 512, description: '`/`로 시작해야 한다. 아니면 `/starter/v1/apis`가 400 — `@host/…`처럼 검사 요청의 호스트를 바꾸지 못하게 (-210)', example: '/api/orders/{id}' }
+        params:
+          type: array
+          items:
+            type: object
+            required: [name, in, type, required]
+            properties:
+              name: { type: string, description: 'body는 본문 전체를 `body` 한 개로' }
+              in: { type: string, enum: [path, query, body, header, cookie], description: '쿠키(@CookieValue)는 cookie. 옛 스타터킷(-240 전)은 header로 보냈다 — 그 값은 그대로 받는다. @RequestBody는 name body(type object) 칸 하나에 더해, 객체면 그 필드마다 body 칸(-251, v1.2.3~ · 필수는 @NotNull · @NotBlank · @NotEmpty · @AssertTrue)' }
+              type: { type: string, enum: [string, integer, number, boolean, object, array], description: 'JSON 타입. Long·int → integer, 소수 → number, DTO·Map → object, List → array' }
+              required: { type: boolean }
+        auth:
+          type: object
+          required: [required, role]
+          properties:
+            required: { type: boolean }
+            role: { type: [string, 'null'] }
+        handler: { type: string, example: 'OrderController#get' }
+        calls: { type: integer, description: '앱이 켜진 뒤 사용자 요청 누적 횟수. 딸깍 검사 요청(`X-Ddalkkak-Scan` 헤더 — k6 · ZAP · 권한 점검 등, scan.md §2-3)은 넣지 않는다(-246). 보낼 때 리셋하지 않고 앱이 다시 켜지면 0부터' }
+      example:
+        method: GET
+        path: '/api/orders/{id}'
+        params: [{ name: id, in: path, type: integer, required: true }]
+        auth: { required: true, role: USER }
+        handler: 'OrderController#get'
+        calls: 1820
+    MeasureSample:
+      type: object
+      description: |
+        API 하나의 1초 묶음. 요청 수는 합계, DB 값은 그 1초에 끝난 요청의 평균, 커넥션 풀은 앱 전체 값이라 같은 1초의 샘플끼리 같다.
+        **null = 미측정** (0과 다르다): 스타터킷이 DataSource를 감싸지 못했으면(상속할 수 없는 클래스 · 여러 DataSource 중 일부라도) `dbQueriesPerRequest` · `dbWaitMs`가 null, HikariCP가 아니면 `pool`이 null. 화면 · 결과는 그 지표를 "미측정"으로 둔다
+      required: [ts, api, requests, dbQueriesPerRequest, dbWaitMs, pool]
+      properties:
+        ts: { type: string, format: date-time, description: 그 1초가 시작한 시각 }
+        api: { type: string, description: '`ApiEndpoint`의 "메서드 path" 그대로 (예 `GET /api/orders/{id}`)' }
+        requests: { type: integer, description: 그 1초에 끝난 요청 수 (합계) }
+        dbQueriesPerRequest: { type: [number, 'null'], description: 요청 1번당 DB 조회 수 (평균). null = 미측정 }
+        dbWaitMs: { type: [number, 'null'], description: 요청 1번당 커넥션을 얻으려고 기다린 시간 (평균). null = 미측정 }
+        pool:
+          description: null = 미측정 (HikariCP가 아님)
+          oneOf:
+            - type: object
+              required: [active, max, waiting]
+              properties:
+                active: { type: integer, description: 그 1초 중 최댓값 }
+                max: { type: integer, description: 풀 설정값 }
+                waiting: { type: integer, description: 그 1초 중 최댓값 }
+            - type: 'null'
+
+    AiCheckResult:
+      type: object
+      required: [ok, shown, message]
+      properties:
+        ok: { type: boolean }
+        shown: { type: [string, 'null'], description: 헤더에 보일 이름 }
+        message: { type: string }
+
+    PerfParams:
+      type: object
+      required: [usersFrom, usersTo, durationMin, shape, failP95Ms, failErrorRate]
+      properties:
+        usersFrom: { type: integer, minimum: 10, maximum: 2000 }
+        usersTo: { type: integer, minimum: 10, maximum: 2000 }
+        durationMin: { type: integer, minimum: 1, maximum: 30 }
+        shape: { type: string, enum: [constant, ramp, spike, step], description: 일정 · 점진 · 급증 · 계단 }
+        failP95Ms: { type: integer, default: 500, description: 실패 기준 p95 }
+        failErrorRate: { type: number, default: 0.01, description: 실패 기준 오류율 }
+    SecParams:
+      type: object
+      required: [range]
+      properties:
+        range: { type: string, enum: [default, wide, full], description: '기본(알려진 패턴 · 120회) · 넓게(변형 포함 · 600회) · 전체(모든 조합 · 2,400회)' }
+    AuthzParams:
+      type: object
+      description: tool이 ddalkkak(권한 점검)일 때
+      required: [idCount]
+      properties:
+        idCount: { type: integer }
+    AccountParams:
+      type: object
+      description: '테스트 계정 만들기(tool: ddalkkak). 이 카드를 끄면 계정이 필요한 항목은 "계정 없음"으로 건너뜀'
+      required: [count]
+      properties:
+        count: { type: integer, minimum: 1, maximum: 5, description: 만들 계정 수 (남의 데이터를 바꾸는 검사는 2개 필요) }
+    CodeParams:
+      type: object
+      required: [severity]
+      properties:
+        severity: { type: string, enum: [critical, major, all], description: 치명만 · 주요까지 · 전부 }
+
+    ScenarioItem:
+      type: object
+      required: [key, area, tool, title, why, params, recommended, excluded, reused]
+      properties:
+        key: { type: string, example: perf-1 }
+        area: { $ref: '#/components/schemas/Area' }
+        tool: { type: string, enum: [k6, zap, semgrep, ddalkkak], description: '`ddalkkak`은 하나로 확정(-170): params에 `count`가 있으면 테스트 계정 만들기, `idCount`가 있으면 권한 점검' }
+        title: { type: string }
+        api: { type: string, description: 성능 · 보안 대상 }
+        target: { type: string, description: 코드 품질 대상 }
+        why: { type: string }
+        params:
+          oneOf:
+            - $ref: '#/components/schemas/PerfParams'
+            - $ref: '#/components/schemas/SecParams'
+            - $ref: '#/components/schemas/AuthzParams'
+            - $ref: '#/components/schemas/AccountParams'
+            - $ref: '#/components/schemas/CodeParams'
+        recommended: { type: boolean, description: AI 추천 여부 }
+        excluded: { type: boolean, description: 효과가 적어 AI가 뺀 항목 (화면 4 점선) }
+        excludeReason: { type: string }
+        reused: { type: boolean, description: 재검사에서 지난 항목을 그대로 씀 }
+
+    Finding:
+      type: object
+      required: [ruleId, severity]
+      properties:
+        ruleId: { type: string }
+        name: { type: string, description: '도구 원문 이름 · 메시지 (ZAP alert 이름 · Semgrep `extra.message` · 권한 점검 이름). 채점이 모르는 ruleId면 이 글로 기본 설명을 쓴다 (-150)' }
+        severity: { type: string, description: 도구 원래 값 (ZAP high·medium·low · Semgrep error·warning·info) }
+        proven: { type: boolean, description: 공격 성공 · 뚫림 }
+        location:
+          type: object
+          description: '발견 위치. 코드 품질(Semgrep)은 `file` · `line`(+ `commit`), 권한 점검의 관리자 API 발견(`ddalkkak-admin-open`)과 목록으로 샌 남의 데이터 보기 발견(`ddalkkak-list-exposure`, 위치는 새는 목록 API)은 `api`만. 채점은 `api`가 있으면 항목 `api` 대신 그것을 문제의 `where`로 쓴다 (-205)'
+          properties:
+            file: { type: string }
+            line: { type: integer }
+            commit: { type: [string, 'null'] }
+            api: { type: string, description: '처음 뚫린 관리자 API — 메서드 + 경로 템플릿(값 없음, scan.md §6)', example: GET /api/admin/users }
+    RawResult:
+      type: object
+      required: [itemKey, area, tool, status]
+      properties:
+        itemKey: { type: string }
+        area: { $ref: '#/components/schemas/Area' }
+        tool: { type: string, enum: [k6, zap, semgrep, ddalkkak] }
+        api: { type: string }
+        status: { type: string, enum: [done, partial, skipped] }
+        skipReason: { $ref: '#/components/schemas/SkipReason' }
+        params: { type: object, description: '이 회차의 항목 조건 — `ScenarioStore.scope(runId)`의 params(시나리오 값 위에 사용자가 바꾼 값을 덮은 것). `run_scope.params`는 바꾼 칸만이라 그대로 싣지 않는다. 채점에 쓴다 — k6 `failP95Ms` · `failErrorRate`(없으면 기본 500ms · 1%), ddalkkak `count`(테스트 계정 만들기, 채점에서 뺌). 빠지면 사용자가 바꾼 실패 기준이 무시된다' }
+        metrics:
+          type: object
+          description: |
+            도구별로 이 필드를 채운다. 없는 값은 넣지 않는다(0으로 채우지 않음)
+            - k6 · perf: `p95Ms` · `avgMs` · `errorRate`(0–1) · `requests` + 스타터킷 측정 `dbQueriesPerRequest`(평균) · `poolWaitingMax`(최댓값) + 측정 구간 생존 신호 CPU `hostCpuMax` · `hostCpuAvg`(앱 PC 시스템 CPU 0–1, 신호가 없으면 넣지 않음, -248). 채점은 `p95Ms` · `errorRate`(통과 기준, 둘 중 하나라도 없으면 미측정)와 정황 지표를 쓴다. CPU는 근거 표에만 남기고, 단순 조회(GET · N+1 정황 없음)가 기준을 넘었는데 `hostCpuMax`가 0.8 이상이면 원인에 측정 환경 확인 안내를 붙인다(등급 · 점수는 그대로)
+            - `sameQueryRatio`(같은 쿼리 반복 비율, 0–1)는 선택. 약속 ① `MeasureSample`에 원본이 없어 지금은 채우지 않는다. 있으면 채점이 정황 지표로 쓴다
+            - zap · sec: `alertsHigh` · `alertsMedium` · `alertsLow` / ddalkkak · sec: `checked` · `leaked` / semgrep · code: `findingsError` · `findingsWarning` · `findingsInfo` — 표시용. 판정은 `findings`로 한다
+            - zap · sec `unattackedQueries`: 테스트 값이 거절돼 OpenAPI에서 빼고 공격하지 않은 선택 쿼리 수(뺀 칸이 없으면 넣지 않음, scan.md §4, -262). 채점은 위험·주의가 없는 항목에 이 값이 1 이상이면 통과 대신 미검사(`요청 구성 오류`)로 센다
+          additionalProperties: { type: number }
+        findings:
+          type: array
+          items: { $ref: '#/components/schemas/Finding' }
+        evidence:
+          type: array
+          items: { type: string }
+          description: |
+            사람이 읽는 근거 몇 줄(도구 태그 + 집계 · 개수 · 메서드+경로 템플릿 · 상태 코드). 앞 5줄이 쉬운 설명(LLM)으로 그대로 가니
+            요청 · 응답 본문, 쿼리 값, 헤더, 토큰 · 비밀번호는 넣지 않는다(NF-04 · NF-05, B3가 모을 때 지킨다 · -142)
+        passed:
+          type: array
+          description: |
+            선택. 도구가 돌려 문제가 없던 검사 — ZAP에서 알림이 없던 규칙(outputSummary의 PASS 줄, 수동 규칙만), 권한 점검에서 401 · 403으로 막힌 점검 · 차단 또는 공개 데이터로 끝난 남의 데이터 보기 (-150 약속, B3가 채운다 · -200, docs/scan.md §4 · §6).
+            채점이 영역 `passed[]`(이름 · 값)로 옮기고, 아는 ruleId는 한국어 이름으로 바꾼다. 여러 결과가 같은 검사(이름 · 값)를 보내면 영역에 한 줄로 합치고, 영역 `summary.pass`에도 센다(통과 수 = 통과 목록 줄 수). `skipped` 항목 · 해석에 실패한 항목 것은 넣지 않는다. 본문 · id 값 · 토큰은 넣지 않는다(evidence와 같은 규칙).
+            ZAP은 테스트 값이 거절된 선택 쿼리를 빼고 돌리면(공격하지 않은 칸이 있음) `done`이어도 ZAP 규칙 통과 줄을 싣지 않는다 — 그 수는 `metrics.unattackedQueries`, evidence에 `[zap] 선택 쿼리 … 는 테스트 값이 거절돼 공격하지 않음`(scan.md §4, -262). 권한 점검이 그 결과에 붙인 관리자 API 통과 줄은 남는다
+          items:
+            type: object
+            required: [name, value]
+            properties:
+              ruleId: { type: string, description: 'zap-10021 · ddalkkak-admin-open …' }
+              name: { type: string, description: '도구 원문 이름 또는 "로그인 없이 관리자 GET /api/admin/users"' }
+              value: { type: string, description: '"발견 없음" · "401 차단" · "20개 중 0개"' }
+    RawReport:
+      type: object
+      description: 검사 결과 원본 (B3 `RawResults.of(runId)`)
+      required: [runId, service, hasCode, conditions, results]
+      properties:
+        runId: { type: string }
+        service: { $ref: '#/components/schemas/ServiceRef' }
+        hasCode: { type: boolean }
+        conditions:
+          type: object
+          required: [testAccount]
+          properties:
+            testAccount: { type: [string, 'null'] }
+        results:
+          type: array
+          items: { $ref: '#/components/schemas/RawResult' }
+      example:
+        runId: run_5
+        service: { name: order-api, framework: Spring Boot 3.2 }
+        hasCode: true
+        conditions: { testAccount: ddalkkak-test-7f2a }
+        results:
+          - itemKey: perf-1
+            area: perf
+            tool: k6
+            api: GET /api/orders
+            status: done
+            params: { usersFrom: 50, usersTo: 200, durationMin: 3, shape: ramp, failP95Ms: 500, failErrorRate: 0.01 }
+            metrics: { p95Ms: 487, avgMs: 212, errorRate: 0.008, requests: 36000, dbQueriesPerRequest: 1240, poolWaitingMax: 148, hostCpuMax: 0.62, hostCpuAvg: 0.41 }
+            findings: []
+            evidence: ['[k6] http_req_duration p(95)=487ms · vus=50', '[db] GET /api/orders sql.count=1240/req']
+          - itemKey: sec-2
+            area: sec
+            tool: zap
+            api: GET /api/orders
+            status: done
+            findings: [{ ruleId: zap-40018, name: SQL Injection, severity: high, proven: true }]
+            evidence: ['[zap] scan complete · alerts=6 high=1']
+            passed:
+              - { ruleId: zap-10020, name: Anti-clickjacking Header, value: 발견 없음 }
+              - { ruleId: zap-10035, name: Strict-Transport-Security Header, value: 발견 없음 }
+              - { ruleId: ddalkkak-admin-open, name: 로그인 없이 관리자 GET /api/admin/users, value: 401 차단 }
+          - itemKey: code-2
+            area: code
+            tool: semgrep
+            status: done
+            findings: [{ ruleId: out.ddalkkak.java.empty-catch, name: 예외를 삼키는 빈 catch — 장애가 조용히 묻혀요, severity: warning, location: { file: PaymentService.java, line: 113, commit: a3f9c1 } }]
+            evidence: []
+          - { itemKey: sec-5, area: sec, tool: zap, status: skipped, skipReason: 계정 없음 }
+
+    AreaSummary:
+      type: object
+      required: [line, pass, fail, skipReason]
+      properties:
+        line: { type: string, description: 한 줄 요약 }
+        pass: { type: integer }
+        fail: { type: integer }
+        skipReason:
+          description: 영역 전체 미검사일 때 사유
+          oneOf: [{ $ref: '#/components/schemas/SkipReason' }, { type: 'null' }]
+    ReportAreaSummary:
+      description: ③ 영역 요약. ④ AreaSummary에 미검사 수를 더한다 (Spring이 run.item_count · 홈 미검사 수를 셀 때 쓴다, docs/run-flow.md §4)
+      allOf:
+        - $ref: '#/components/schemas/AreaSummary'
+        - type: object
+          required: [skip, skipReasons]
+          properties:
+            skip: { type: integer, description: '그 영역의 미검사 항목 수 — skipped와 AI 서버가 미검사로 판정한 것(중단됨 · 미측정 · 결과 해석 실패 · 요청 구성 오류). 테스트 계정 만들기는 세지 않는다' }
+            skipReasons:
+              type: object
+              propertyNames: { $ref: '#/components/schemas/SkipReason' }
+              additionalProperties: { type: integer }
+              description: '미검사 사유(`SkipReason` 값)별 수. 합은 `skip`과 같다. Spring은 세 영역을 합쳐 가장 많은 사유를 run.skip_reason(홈 "미검사 N(사유)")으로 쓴다. `skipReason`은 영역 전체가 미검사일 때만 채워져 회차 사유를 셀 수 없다'
+              example: { 계정 없음: 1 }
+    Issue:
+      type: object
+      required: [id, itemKey, area, level, certainty, title, tech, impact, asIs, toBe, metrics, suspectReason, where, cause, fix, passCriteria, penalty]
+      properties:
+        id: { type: string, example: p2 }
+        itemKey: { type: string }
+        area: { $ref: '#/components/schemas/Area' }
+        level: { type: string, enum: [danger, warn], description: '위험 · 주의 (통과는 passed[])' }
+        certainty: { type: string, enum: [confirmed, suspected], description: 확인됨 · 의심 }
+        title: { type: string, description: '사용자용 문제 이름. 규칙 ID를 쓰지 않는다. 표에 없어 넓은 일반 이름을 받은 문제만 끝에 구분을 붙인다 — 보안(보안 취약점 · 입력값 주입)은 도구 원문 이름, 코드(보안에 취약한 코드 · 코드 품질 규칙)는 같은 위치에 같은 제목이 둘 이상일 때만 번호 ( (1) · (2) …). 코드 제목에는 도구 메시지를 붙이지 않는다 (-233 · -255)' }
+        tech: { type: string, description: '{종류} · {위치}. 홈 "종류"는 첫 조각. 규칙 ID는 싣지 않는다 — 원래 ID는 원본 결과(findings[].ruleId)에만 (-233)' }
+        impact: { type: string }
+        asIs: { $ref: '#/components/schemas/ValueLabel' }
+        toBe: { $ref: '#/components/schemas/ValueLabel' }
+        metrics:
+          type: array
+          items:
+            type: object
+            required: [name, now, target]
+            properties: { name: { type: string }, now: { type: string }, target: { type: string } }
+        suspectReason: { type: [string, 'null'] }
+        where: { type: string }
+        cause: { type: string }
+        fix:
+          type: object
+          required: [recommended, alternative]
+          properties: { recommended: { type: string }, alternative: { type: [string, 'null'] } }
+        passCriteria: { type: string }
+        penalty: { type: integer, enum: [30, 10], description: '이 문제로 영역 점수에서 뺀 점수 — 위험 30 · 주의 10. 영역 점수 = max(0, 100 − 그 영역 penalty 합). 화면 6이 점수 근거로 보인다 (F-RPT-04, -247)' }
+        ruleId: { type: [string, 'null'], description: '내부용 — 보안 · 코드 문제의 도구 규칙 ID(zap-40018 · Semgrep 규칙), 성능은 null. ③ 응답에만 싣고 Spring이 run_issue.rule_id에 저장해 코드 위치 예비 경로(semgrepSpot)를 그 규칙의 발견으로 좁힌다. ④ 화면 응답에는 싣지 않는다 (-247, !147 리뷰 1-2)' }
+    ValueLabel:
+      type: object
+      required: [value, label]
+      properties: { value: { type: string }, label: { type: string } }
+    Passed:
+      type: object
+      required: [area, name, value]
+      properties:
+        area: { $ref: '#/components/schemas/Area' }
+        name: { type: string }
+        value: { type: string }
+    Report:
+      type: object
+      description: '예시는 `RawReport` 예시를 채점 규칙(`ai/report/scoring.py`)에 넣은 결과 그대로다(AI 키 없음 → `source: default`). AI가 있으면 글 칸만 바뀌고 점수 · 숫자 칸은 같다 (`ai/tests/test_reports.py`가 둘이 같은지 본다)'
+      required: [source, scores, summary, issues, passed]
+      properties:
+        source: { type: string, enum: [llm, default] }
+        scores: { $ref: '#/components/schemas/Scores' }
+        summary:
+          type: object
+          required: [perf, sec, code]
+          properties:
+            perf: { $ref: '#/components/schemas/ReportAreaSummary' }
+            sec: { $ref: '#/components/schemas/ReportAreaSummary' }
+            code: { $ref: '#/components/schemas/ReportAreaSummary' }
+        issues:
+          type: array
+          items: { $ref: '#/components/schemas/Issue' }
+        passed:
+          type: array
+          items: { $ref: '#/components/schemas/Passed' }
+      example:
+        source: default
+        scores: { perf: 90, sec: 70, code: 90 }
+        summary:
+          perf: { line: 주의 1건 — 점검을 권해요, pass: 0, fail: 1, skip: 0, skipReasons: {}, skipReason: null }
+          sec: { line: 위험 1건 — 바로 확인이 필요해요 · 미검사 1건, pass: 3, fail: 1, skip: 1, skipReasons: { 계정 없음: 1 }, skipReason: null }
+          code: { line: 주의 1건 — 점검을 권해요, pass: 0, fail: 1, skip: 0, skipReasons: {}, skipReason: null }
+        issues:
+          - id: p1
+            itemKey: perf-1
+            area: perf
+            level: warn
+            certainty: suspected
+            title: DB를 반복 호출하는 정황이 있어요
+            tech: N+1 의심 · GET /api/orders
+            impact: 지금은 기준 안이지만 사용자가 늘면 급격히 느려질 수 있어요
+            asIs: { value: 1240회, label: 요청당 DB 쿼리 }
+            toBe: { value: 10회 이하, label: 요청당 DB 쿼리 }
+            metrics:
+              - { name: 느린 요청 p95, now: 487ms, target: 500ms 이내 }
+              - { name: 오류율, now: 0.8%, target: 1% 이하 }
+              - { name: 요청당 DB 쿼리, now: 1240회, target: 10회 이하 }
+              - { name: 커넥션 풀 대기 최대, now: 148개, target: 10개 미만 }
+              - { name: 측정 중 앱 PC CPU 최대, now: 62%, target: 80% 미만 }
+            suspectReason: 요청당 DB 쿼리 1240회 — 측정 정황으로 추정
+            where: GET /api/orders
+            cause: 요청마다 같은 조회가 반복되는 것으로 보여요
+            fix: { recommended: 필요한 데이터를 한 번에 묶어 조회, alternative: 자주 쓰는 결과는 캐시 }
+            passCriteria: p95 500ms 이내 · 오류율 1% 이하
+            penalty: 10
+            ruleId: null
+          - id: s1
+            itemKey: sec-2
+            area: sec
+            level: danger
+            certainty: confirmed
+            title: 검색어로 SQL을 바꿔 남의 데이터까지 읽을 수 있어요
+            tech: SQL 주입 · GET /api/orders
+            impact: 실제로 뚫린 구멍이라 데이터 유출·변조로 이어질 수 있어요
+            asIs: { value: 공격 성공, label: SQL 주입 }
+            toBe: { value: 차단, label: SQL 주입 }
+            metrics: []
+            suspectReason: null
+            where: GET /api/orders
+            cause: 입력값이 SQL 문장에 그대로 들어가 따옴표 하나로 쿼리가 바뀌어요
+            fix: { recommended: '값을 문자열로 잇지 말고 파라미터 바인딩(:name · ?)으로 넘기기', alternative: JPA 메서드 이름 쿼리나 Criteria로 바꾸기 }
+            passCriteria: 같은 공격 재검사에서 성공 0건
+            penalty: 30
+            ruleId: zap-40018
+          - id: c1
+            itemKey: code-2
+            area: code
+            level: warn
+            certainty: confirmed
+            title: 예외를 잡고 아무것도 하지 않아요
+            tech: '빈 catch · PaymentService.java:113'
+            impact: 방치하면 장애·보안 사고를 숨기거나 키울 수 있는 코드예요
+            asIs: { value: 1건, label: 발견 }
+            toBe: { value: 0건, label: 발견 }
+            metrics: []
+            suspectReason: null
+            where: 'PaymentService.java:113'
+            cause: 빈 catch가 오류를 삼켜서 장애가 나도 로그 · 알림이 남지 않아요
+            fix: { recommended: '최소한 로그를 남기고, 여기서 처리할 수 없으면 다시 던지기', alternative: 필요 없는 try-catch는 지우기 }
+            passCriteria: 재검사에서 error·warning 0건
+            penalty: 10
+            ruleId: out.ddalkkak.java.empty-catch
+        passed:
+          - { area: sec, name: 클릭재킹 방지 헤더, value: 발견 없음 }
+          - { area: sec, name: HTTPS 강제(HSTS) 헤더, value: 발견 없음 }
+          - { area: sec, name: 로그인 없이 관리자 GET /api/admin/users, value: 401 차단 }
+
+    ConnectRequest:
+      type: object
+      required: [id, appName, framework, frameworkVersion, host, port, pid, javaVersion, buildTool, requestedAt, starterOutdated]
+      properties:
+        id: { type: string }
+        appName: { type: string }
+        framework: { type: string }
+        frameworkVersion: { type: string }
+        host: { type: string }
+        port: { type: integer }
+        pid: { type: integer }
+        javaVersion: { type: string }
+        buildTool: { type: string }
+        requestedAt: { type: string, format: date-time }
+        starterOutdated:
+          type: boolean
+          description: >-
+            스타터킷이 1.1.0 전 출시본(hello `starterVersion`)이라 서비스 토큰을 모른다 — 허용하면 409 `STARTER_OUTDATED`. 화면은 연결 버튼 대신
+            스타터킷을 올리라는 안내와 의존성 줄 복사를 보여 준다. 직접 빌드한 키트(`dev` · `0.1.0-SNAPSHOT`)는 false (-221)
+      example:
+        id: req_7f2a
+        appName: order-api
+        framework: Spring Boot
+        frameworkVersion: 3.2.5
+        host: localhost
+        port: 8080
+        pid: 41822
+        javaVersion: '17'
+        buildTool: Gradle
+        requestedAt: '2026-10-31T10:02:11+09:00'
+        starterOutdated: false
+
+    UpdateStatus:
+      type: object
+      required: [current, latest, canUpdate]
+      properties:
+        current: { type: [string, 'null'], description: '이 서버의 출시 버전(`DDALKKAK_VERSION`, 예 1.2.1). 소스 빌드(compose · bootRun · dev 이미지)는 null — 띠 없음' }
+        latest: { type: [string, 'null'], description: 'GitHub Releases latest 가 current 보다 새것이면 그 버전(앞의 v 뺌). 아니거나 확인 실패면 null — 띠 없음' }
+        canUpdate: { type: boolean, description: '설치기(README docker run 한 줄)로 깐 서버 — 업데이트 버튼. false(Compose)면 docker compose pull · up -d 안내' }
+
+    Home:
+      type: object
+      required: [service, health, lastRun, run, kitUrl, hostHealth]
+      properties:
+        kitUrl:
+          type: string
+          description: >-
+            같은 컴퓨터의 앱(스타터킷)이 이 딸깍을 부를 주소 `http://localhost:<이 컴퓨터에서 연 포트>`. 설치기가 7777을 못 써서 다른 포트로 열었으면 그 포트다(-227 · -151).
+            0-3 ①은 7777이 아니면 앱에 넣을 `DDALKKAK_URL=<kitUrl>` 줄을 보여 준다. 서비스 연결과 상관없이 늘 있다
+        service:
+          oneOf:
+            - type: object
+              required: [id, name, host, port, connected, apiCount, disconnect, starterOutdated]
+              properties:
+                id: { type: string }
+                name: { type: string }
+                host: { type: string, description: 'hello의 host. 끊겼을 때 다시 허용할 연결 요청(이름 · host · port가 같은)을 찾는 데 쓴다(-211)' }
+                port: { type: integer }
+                connected: { type: boolean }
+                apiCount: { type: [integer, 'null'], description: 마지막으로 받은 API 목록의 개수. 아직 못 받았으면 null }
+                disconnect:
+                  description: >-
+                    연결 점검(-223, 30초마다 · 5초 제한). 연결 불가 · 시간 초과 · 5xx를 실패로 센다. 응답이 오면(2xx · 3xx · 4xx) 성공이라 연속 실패 수가 0으로 돌아간다.
+                    `needsConfirm: true`면 홈 · 0-3 ②에 해제 안내를 띄우고, 사용자가 확인해야만 해제한다(해제하면 `service: null`).
+                    그 서비스가 검사 중(running)이면 세지 않고 0이다. Spring은 늘 객체를 준다(점검 전이면 `failures: 0` · `lastCheckedAt: null`) — null은 옛 Spring(-223 전)
+                  oneOf:
+                    - type: object
+                      required: [failures, needsConfirm, lastCheckedAt]
+                      properties:
+                        failures: { type: integer, minimum: 0, description: '연속 실패 수. 성공하면 0, 딸깍이 다시 켜지면 0부터' }
+                        needsConfirm: { type: boolean, description: '해제 안내를 띄울지 — failures >= 3이거나 생존 신호가 1분 30초 넘게 없음(-250, 검사 중엔 점검을 건너뛰고 같은 포트에 다른 앱이 뜨면 점검은 성공해서)' }
+                        lastCheckedAt: { type: [string, 'null'], format: date-time, description: 마지막 점검 시각. 아직 한 번도 안 했으면 null }
+                    - type: 'null'
+                starterOutdated:
+                  type: boolean
+                  description: >-
+                    업그레이드 전에 허용한 앱의 스타터킷이 1.1.0 전 출시본이다 — 토큰을 몰라 API 목록 · 측정값이 401이라 검사가 멈춘다.
+                    홈 띠가 "스타터킷을 v1.1.0 이상으로 올리고 앱을 다시 켠 뒤 다시 허용"을 안내한다 (-221)
+            - type: 'null'
+        health:
+          oneOf:
+            - allOf:
+                - $ref: '#/components/schemas/Health'
+                - type: object
+                  required: [serverTime]
+                  properties:
+                    serverTime: { type: string, format: date-time }
+            - type: 'null'
+        hostHealth:
+          description: >-
+            앱을 연결하기 전(`service: null`) 홈 서버 상태 게이지 값 — 딸깍 서버가 자기가 도는 곳을 잰다(-256). 서비스가 있으면(끊김 포함) null이고 게이지는 `health`(스타터킷 생존 신호)를 쓴다.
+            CPU · 메모리는 딸깍 서버 JVM이 보는 값이라 컨테이너에 CPU · 메모리 한도가 있으면 그 한도 기준이고, Docker Desktop(Windows · Mac)에서는 Docker VM의 값이다.
+            디스크는 딸깍 작업 폴더가 있는 디스크(컨테이너면 Docker가 이미지 · 검사 도구를 쌓는 디스크), `uptimeSec`은 딸깍 가동 시간이다.
+            CPU를 못 읽으면 0이다(스타터킷과 같다)
+          oneOf:
+            - allOf:
+                - $ref: '#/components/schemas/Health'
+                - type: object
+                  required: [serverTime]
+                  properties:
+                    serverTime: { type: string, format: date-time }
+            - type: 'null'
+        lastRun:
+          description: B2 `RunHistory.latest()`
+          oneOf:
+            - type: object
+              required: [runId, at, scores, topDanger, topWarn, passed, skipped]
+              properties:
+                runId: { type: string }
+                at: { type: string, format: date-time }
+                scores: { $ref: '#/components/schemas/Scores' }
+                topDanger: { type: [string, 'null'], description: '위험(danger)이 있는 영역마다 "영역 개수 · 문제 종류 최대 2개" 한 줄, 성능 · 보안 · 코드 품질 순으로 줄바꿈(\n)해 잇는다. 없으면 null (-214)' }
+                topWarn: { type: [string, 'null'], description: 주의(warn)를 topDanger와 같은 방식으로 }
+                passed: { type: integer }
+                skipped:
+                  type: object
+                  required: [count, reason]
+                  properties:
+                    count: { type: integer }
+                    reason: { type: [string, 'null'] }
+            - type: 'null'
+        run:
+          description: >-
+            홈 검사 상태 칩(-214) · 이어서 검사 확인(-228). 연결 안 됐으면 null.
+            `running` 회차가 돌고 있음(누르면 그 회차 5 진행) ·
+            `interrupted` 딸깍이 다시 켜져 멈춤, 이어서 할지 사용자 확인 대기(-228) — 화면은 "이어서 검사할까요?"로 묻고 이어서 `POST /api/runs/resume` · 여기까지 결과 보기 `POST /api/runs/{id}/finish-partial`. 고르면 그 회차는 running이 되고, 그 뒤에 같은 서비스의 다른 검사가 끝나면 더 묻지 않는다 ·
+            `done` lastRun 회차가 끝났고 결과(`GET /api/runs/{id}`)를 아직 열지 않음 — 결과를 열면 서버가 표시해 그다음부터 `none`(-214) ·
+            `none` 그 밖(검사 전).
+            딸깍이 다시 켜져 멈춘 회차는 `stopped`로 끝나 `lastRun`에도 잡히지만(점수 없음), 사용자가 이어서 할지 정할 때까지는 `done`이 아니라 `interrupted`다
+          oneOf:
+            - type: object
+              required: [state, runId, interruptedAt]
+              properties:
+                state: { type: string, enum: [none, running, interrupted, done] }
+                runId: { type: [string, 'null'], description: none이면 null }
+                interruptedAt:
+                  description: interrupted일 때 멈춘 단계. step · name은 `GET /api/runs/{id}/progress`의 steps와 같은 값. 그 밖에는 null
+                  oneOf:
+                    - type: object
+                      required: [step, name]
+                      properties:
+                        step: { type: string, enum: [check, auth, sec, perf, code, report] }
+                        name: { type: string }
+                    - type: 'null'
+            - type: 'null'
+      example:
+        service: { id: svc_1, name: order-api, host: localhost, port: 8080, connected: true, apiCount: 14, disconnect: { failures: 0, needsConfirm: false, lastCheckedAt: '2026-11-07T15:09:50+09:00' }, starterOutdated: false }
+        health: { cpu: 0.23, mem: { usedMb: 5018, totalMb: 8192 }, disk: { usedGb: 38, totalGb: 80 }, uptimeSec: 309600, serverTime: '2026-11-07T15:10:00+09:00' }
+        lastRun:
+          runId: run_5
+          at: '2026-11-07T14:35:00+09:00'
+          scores: { perf: 80, sec: 70, code: 90 }
+          topDanger: 보안 1 · SQL 문자열 연결
+          topWarn: "성능 2 · N+1 의심 · 커넥션 풀 대기\n코드 품질 1 · 빈 catch"
+          passed: 35
+          skipped: { count: 11, reason: 계정 없음 }
+        run: { state: none, runId: null, interruptedAt: null }
+        hostHealth: null
+        kitUrl: http://localhost:7777
+
+    AiSettingInput:
+      type: object
+      required: [provider, baseUrl, key, model]
+      properties:
+        provider: { type: string, enum: [claude, openai, custom], description: 'Claude · OpenAI · 직접 URL/사내 프록시(OpenAI 호환)' }
+        baseUrl: { type: [string, 'null'], description: '주소(http · https). 어느 제공자든 넣을 수 있다 — 게이트웨이 · 사내 프록시. claude · openai는 null이면 공식 주소, custom(OpenAI 호환)은 필수' }
+        key: { type: string, format: password }
+        model: { type: string }
+      example: { provider: claude, baseUrl: null, key: sk-ant-xxxx7f2a, model: claude-sonnet-5-5 }
+    AiSetting:
+      type: object
+      required: [provider, baseUrl, model, keyMasked, connected]
+      properties:
+        provider: { type: [string, 'null'], enum: [claude, openai, custom, null] }
+        baseUrl: { type: [string, 'null'] }
+        model: { type: [string, 'null'] }
+        keyMasked: { type: [string, 'null'], example: sk-…7f2a }
+        connected: { type: boolean }
+      example: { provider: claude, baseUrl: null, model: claude-sonnet-5-5, keyMasked: sk-…7f2a, connected: true }
+
+    CodeSourceInput:
+      type: object
+      required: [type]
+      properties:
+        type: { type: string, enum: [github, jar, local, none], description: 'GitHub/GitLab · 실행 파일(jar · war)에서 복원 · 내 컴퓨터 폴더 · 코드 없이 (ZIP은 /api/code-source/zip)' }
+        ref: { type: [string, 'null'], description: '저장소 주소 · jar/war 경로(`GET /api/code-source/artifacts` 후보의 path) · 폴더 경로' }
+        branch: { type: [string, 'null'] }
+        token: { type: [string, 'null'], format: password, description: 비공개 저장소 읽기 토큰 (암호화 저장) }
+    CodeSource:
+      type: object
+      required: [type, ref, branch, lastCommit, lastCommitAt, lastFetchedAt, sameVersion, decompiled, fileHash]
+      properties:
+        type: { type: string, enum: [github, jar, zip, local, none] }
+        ref: { type: [string, 'null'], description: '저장소 주소 · jar/war 경로 · ZIP 파일 이름 · 폴더 경로' }
+        branch: { type: [string, 'null'] }
+        lastCommit: { type: [string, 'null'] }
+        lastCommitAt: { type: [string, 'null'], format: date-time, description: '홈 코드 줄 "2시간 전 커밋"' }
+        fileHash: { type: [string, 'null'], description: 'ZIP · jar · war 파일 sha256 앞 12자. github · local · none이면 null (-224)' }
+        sameVersion: { type: [boolean, 'null'], description: '실행 중인 버전(스타터킷 runningCommit)과 같은지 · 모르면 null' }
+        lastFetchedAt: { type: [string, 'null'], format: date-time }
+        decompiled: { type: boolean }
+      example: { type: github, ref: 'https://github.com/owner/order-api', branch: main, lastCommit: a3f9c1, lastCommitAt: '2026-11-07T12:10:00+09:00', lastFetchedAt: '2026-11-07T14:00:00+09:00', sameVersion: true, decompiled: false, fileHash: null }
+    CodeArtifact:
+      type: object
+      required: [path, kind, from, readable, reason, sizeBytes, modifiedAt]
+      properties:
+        path: { type: string, description: 호스트 절대 경로 }
+        kind: { type: string, enum: [jar, war] }
+        from: { type: string, enum: [running, workDir], description: 'running = 지금 실행 중인 파일(hello `artifact`) · workDir = 작업 폴더에서 찾음' }
+        readable: { type: boolean, description: false면 고를 수 없다 (흐리게 + reason) }
+        reason: { type: [string, 'null'], description: '읽을 수 없는 이유 — "홈 폴더 밖이에요" · "딸깍 폴더 안이에요" · "읽을 권한이 없어요"' }
+        sizeBytes: { type: [integer, 'null'] }
+        modifiedAt: { type: [string, 'null'], format: date-time }
+      example: { path: /home/me/order-api/build/libs/order-api.jar, kind: jar, from: running, readable: true, reason: null, sizeBytes: 48211033, modifiedAt: '2026-11-11T09:40:00+09:00' }
+    CodeJob:
+      type: object
+      required: [step, done, commit, runningCommit, sameVersion, decompiled, error]
+      properties:
+        step: { type: string, enum: [cloning, extracting, decompiling, linking, done, failed] }
+        done: { type: boolean }
+        commit: { type: [string, 'null'] }
+        runningCommit: { type: [string, 'null'] }
+        sameVersion: { type: [boolean, 'null'], description: 둘 중 하나라도 없으면 null }
+        decompiled: { type: boolean }
+        error:
+          oneOf: [{ $ref: '#/components/schemas/Error' }, { type: 'null' }]
+      example: { step: done, done: true, commit: a3f9c1, runningCommit: a3f9c1, sameVersion: true, decompiled: false, error: null }
+
+    ProjectName:
+      type: string
+      minLength: 1
+      maxLength: 100
+      description: 검사 프로젝트 이름(회차마다, 최대 100자 — 기본값인 서비스 이름과 같은 길이라 기본값을 자르지 않는다). 새 회차는 그 회차를 시작할 때 연결된 서비스 이름(`service`)으로 저장되고, 사용자가 `PATCH /api/runs/{id}`로 고친다. 고쳐도 다른 회차 · `service`는 안 바뀐다
+      example: order-api
+    ProjectNameInput:
+      type: object
+      required: [projectName]
+      properties:
+        projectName:
+          type: string
+          description: 앞뒤 공백을 뗀 뒤 1~100자. 비었거나 100자를 넘으면 400 `BAD_REQUEST`
+          example: 주문 서비스 v2
+      example: { projectName: 주문 서비스 v2 }
+    RunIdOnly:
+      type: object
+      required: [runId]
+      properties:
+        runId: { type: string }
+      example: { runId: run_5 }
+
+    Prepare:
+      type: object
+      required: [rows, pct, done, apiCount, apiDiff, aiMode, error]
+      properties:
+        rows:
+          type: array
+          items:
+            type: object
+            required: [name, state, detail]
+            properties:
+              name: { type: string }
+              state: { type: string, enum: [done, running, waiting, skipped], description: 완료 · 진행 · 대기 · 건너뜀 }
+              detail: { type: string }
+        pct: { type: integer, minimum: 0, maximum: 100 }
+        done: { type: boolean }
+        apiCount: { type: [integer, 'null'] }
+        apiDiff:
+          oneOf:
+            - type: object
+              required: [added, removed, changed, apis]
+              properties:
+                added: { type: integer }
+                removed: { type: integer }
+                changed: { type: integer }
+                apis:
+                  type: array
+                  description: 바뀐 API (새로 생김 · 없어짐 · 바뀜)
+                  items:
+                    type: object
+                    required: [api, change]
+                    properties:
+                      api: { type: string }
+                      change: { type: string, enum: [new, removed, changed] }
+            - type: 'null'
+          description: 첫 검사면 null
+        aiMode: { type: [string, 'null'], enum: [llm, default, null] }
+        error:
+          description: 준비 실패 (앱 꺼짐 · API 0개 · 목록 안 옴)
+          oneOf: [{ $ref: '#/components/schemas/Error' }, { type: 'null' }]
+      example:
+        rows:
+          - { name: 코드 가져오기, state: done, detail: GitHub main a3f9c1 }
+          - { name: API 목록 받기, state: done, detail: 14개 · 지난번보다 +1 }
+          - { name: 시나리오 만들기, state: running, detail: 성능 · 보안 · 코드 품질 }
+        pct: 70
+        done: false
+        apiCount: 14
+        apiDiff: { added: 1, removed: 0, changed: 0, apis: [{ api: POST /api/coupons, change: new }] }
+        aiMode: llm
+        error: null
+
+    PrepareApis:
+      type: object
+      required: [apis]
+      properties:
+        apis:
+          type: array
+          items:
+            type: object
+            required: [api, change]
+            properties:
+              api: { type: string, description: '"메서드 주소"' }
+              change: { type: [string, 'null'], enum: [new, changed, null], description: 지난 회차와 비교. 그대로이거나 첫 검사면 null }
+      example:
+        apis:
+          - { api: GET /api/orders, change: null }
+          - { api: 'GET /api/orders/{id}', change: null }
+          - { api: POST /api/orders, change: new }
+
+    ScopeItem:
+      allOf:
+        - $ref: '#/components/schemas/ScenarioItem'
+        - type: object
+          required: [included, source, aiParams]
+          properties:
+            included: { type: boolean }
+            source: { type: string, enum: [llm, default, manual] }
+            aiParams:
+              type: [object, 'null']
+              additionalProperties: true
+              description: '사용자가 바꾸기 전 AI가 정한 조건(scenario_item.params). ✎ 팝업 "AI 추천으로"가 쓴다. params는 이 위에 사용자가 바꾼 값을 합친 것. 직접 추가(source manual) 카드는 null'
+    Scope:
+      type: object
+      required: [parts, estimate]
+      properties:
+        parts:
+          type: array
+          items:
+            type: object
+            required: [area, on, offReason, items]
+            properties:
+              area: { $ref: '#/components/schemas/Area' }
+              on: { type: boolean }
+              offReason: { type: [string, 'null'], description: '영역이 꺼진 이유 — 코드 없음(코드 없이 검사하는 회차) · 항목 없음(이 영역 시나리오가 0개) · null(켜짐, 또는 사용자가 끔)', example: 코드 없음 }
+              items:
+                type: array
+                items: { $ref: '#/components/schemas/ScopeItem' }
+        estimate:
+          type: object
+          required: [scenarioCount, requests, durationMin, load, advice]
+          properties:
+            scenarioCount: { type: integer }
+            requests: { type: integer }
+            durationMin: { type: integer }
+            load: { type: string, enum: [low, medium, high, very_high], description: '끝 사용자 80 이하 · 300 이하 · 700 이하 · 그 위' }
+            advice: { type: string, example: 개발 서버 권장 }
+      example:
+        parts:
+          - area: perf
+            on: true
+            offReason: null
+            items:
+              - { key: perf-1, area: perf, tool: k6, title: 주문 목록 피크, api: GET /api/orders, why: '가장 많이 호출되는 API · 1,820번', params: { usersFrom: 50, usersTo: 200, durationMin: 3, shape: ramp, failP95Ms: 500, failErrorRate: 0.01 }, recommended: true, excluded: false, reused: false, included: true, source: llm, aiParams: { usersFrom: 50, usersTo: 200, durationMin: 3, shape: ramp, failP95Ms: 500, failErrorRate: 0.01 } }
+              - { key: perf-2, area: perf, tool: k6, title: 주문 상세 피크, api: 'GET /api/orders/{id}', why: 두 번째로 많이 호출되는 GET이에요, params: { usersFrom: 20, usersTo: 100, durationMin: 3, shape: step, failP95Ms: 800, failErrorRate: 0.01 }, recommended: true, excluded: false, reused: false, included: true, source: llm, aiParams: { usersFrom: 20, usersTo: 100, durationMin: 3, shape: step, failP95Ms: 800, failErrorRate: 0.01 } }
+              - { key: perf-3, area: perf, tool: k6, title: 주문 목록 순간 몰림, api: GET /api/orders, why: 같은 순간 사람이 몰리면 DB 연결이 모자랄 수 있어요, params: { usersFrom: 10, usersTo: 200, durationMin: 1, shape: spike, failP95Ms: 1000, failErrorRate: 0.01 }, recommended: true, excluded: false, reused: false, included: true, source: llm, aiParams: { usersFrom: 10, usersTo: 200, durationMin: 1, shape: spike, failP95Ms: 1000, failErrorRate: 0.01 } }
+              - { key: perf-4, area: perf, tool: k6, title: 상품 검색 대량, api: GET /api/products, why: 응답이 캐시돼 부하 효과가 적어요, params: { usersFrom: 50, usersTo: 200, durationMin: 3, shape: ramp, failP95Ms: 500, failErrorRate: 0.01 }, recommended: false, excluded: true, excludeReason: 캐시됨, reused: false, included: false, source: llm, aiParams: { usersFrom: 50, usersTo: 200, durationMin: 3, shape: ramp, failP95Ms: 500, failErrorRate: 0.01 } }
+          - area: sec
+            on: true
+            offReason: null
+            items:
+              - { key: sec-1, area: sec, tool: ddalkkak, title: 테스트 계정 만들기, api: POST /api/users, why: 로그인이 필요한 API를 검사하려면 계정이 있어야 해요, params: { count: 1 }, recommended: true, excluded: false, reused: false, included: true, source: llm, aiParams: { count: 1 } }
+              - { key: sec-2, area: sec, tool: zap, title: 입력값 인젝션, api: GET /api/orders, why: 검색어가 쿼리에 들어가는 API예요, params: { range: wide }, recommended: true, excluded: false, reused: false, included: true, source: llm, aiParams: { range: wide } }
+              - { key: sec-3, area: sec, tool: ddalkkak, title: 남의 주문 보기, api: 'GET /api/orders/{id}', why: id만으로 조회하는 API예요, params: { idCount: 20 }, recommended: true, excluded: false, reused: false, included: true, source: llm, aiParams: { idCount: 20 } }
+              - { key: sec-4, area: sec, tool: zap, title: 관리자 API 비로그인, api: 'GET /api/admin/*', why: 관리자 API 6개가 로그인 없이 열려 있는지 봐요, params: { range: default }, recommended: true, excluded: false, reused: false, included: true, source: llm, aiParams: { range: default } }
+              - { key: sec-5, area: sec, tool: zap, title: 남의 주문 취소, api: 'POST /api/orders/{id}/cancel', why: 다른 사람 주문을 취소할 수 있는지 봐요 · 계정 2개 필요, params: { range: default }, recommended: true, excluded: false, reused: false, included: true, source: llm, aiParams: { range: default } }
+              - { key: sec-6, area: sec, tool: zap, title: 로그인 무차별 대입, api: POST /api/auth/login, why: 비밀번호를 계속 틀려도 막히지 않는지 봐요, params: { range: default }, recommended: true, excluded: false, reused: false, included: true, source: default, aiParams: { range: default } }
+          - area: code
+            on: true
+            offReason: null
+            items:
+              - { key: code-1, area: code, tool: semgrep, title: 하드코딩된 비밀값, target: 전체, why: 키·비밀번호가 코드에 박혀 있는지 봐요, params: { severity: critical }, recommended: true, excluded: false, reused: false, included: true, source: llm, aiParams: { severity: critical } }
+              - { key: code-2, area: code, tool: semgrep, title: 예외 처리, target: 전체, why: 빈 catch가 장애를 숨겨요, params: { severity: major }, recommended: true, excluded: false, reused: false, included: true, source: llm, aiParams: { severity: major } }
+              - { key: code-3, area: code, tool: semgrep, title: SQL 문자열 연결, target: '*Repository.java', why: 검색어를 SQL에 이어 붙이는 곳을 찾아요, params: { severity: major }, recommended: true, excluded: false, reused: false, included: true, source: llm, aiParams: { severity: major } }
+              - { key: code-4, area: code, tool: semgrep, title: 로그 형식, target: 전체, why: 고쳐도 점수에 영향이 적어요, params: { severity: all }, recommended: false, excluded: true, excludeReason: 치명·주요 아님, reused: false, included: false, source: llm, aiParams: { severity: all } }
+        estimate: { scenarioCount: 12, requests: 63360, durationMin: 16, load: medium, advice: 개발 서버 권장 }
+    AuthSetting:
+      type: object
+      description: 검사 대상 앱 로그인 설정 (서비스마다 하나, -230). 값은 내주지 않는다
+      required: [state, analysis, mode, hint, tokenAt, lastUsedAt]
+      properties:
+        state:
+          type: string
+          enum: [none, ok, expired, key_lost]
+          description: none 확인 전 · ok 쓸 수 있음 · expired 거절돼 다시 넣어야 함 · key_lost master.key가 바뀌어 지움
+        analysis:
+          type: object
+          description: 로그인 구조 분석 (이 회차 API 목록만 본다)
+          required: [loginApi, signupApi, fields, fieldsGuessed]
+          properties:
+            loginApi: { type: [string, 'null'], description: '"POST /api/auth/login". 못 찾으면 null — 토큰이나 쿠키를 넣게 안내한다' }
+            signupApi: { type: [string, 'null'], description: 못 찾으면 null — 딸깍이 계정을 만들 수 없다 }
+            fields: { type: array, items: { type: string }, description: 로그인 요청 칸 }
+            fieldsGuessed: { type: boolean, description: 칸 정보가 없어 흔한 칸을 다 싣는다 }
+        mode: { type: [string, 'null'], enum: [account, token, cookie, null] }
+        hint: { type: [string, 'null'], description: '가린 값 — 계정 dd…7f2a · 토큰 …a1b2 · 쿠키 SESSION=****' }
+        tokenAt: { type: [string, 'null'], description: '계정 로그인 응답에서 값을 찾은 자리 — body.token · header.Authorization · cookie.SESSION' }
+        lastUsedAt: { type: [string, 'null'], format: date-time, description: 마지막으로 쓴 때. 30일이 지나면 지운다 }
+    AuthInput:
+      type: object
+      required: [mode]
+      properties:
+        mode: { type: string, enum: [account, token, cookie] }
+        create: { type: boolean, description: 'account — true면 딸깍이 ddalkkak-test-xxxx 계정을 가입시킨다(username · password는 보내지 않는다)' }
+        username: { type: string, description: account — 아이디 또는 이메일 }
+        password: { type: string, description: account }
+        token: { type: string, description: 'token — Authorization: Bearer 로 싣는다' }
+        cookie: { type: string, description: 'cookie — "이름=값; 이름=값"을 Cookie 헤더로 싣는다' }
+    ScopeInput:
+      type: object
+      properties:
+        areas:
+          type: object
+          description: 영역 스위치
+          properties:
+            perf: { type: boolean }
+            sec: { type: boolean }
+            code: { type: boolean }
+        items:
+          type: array
+          description: 카드 포함/제외 · 팝업에서 바꾼 조건(바꾼 칸만). 합친 값이 시작 > 끝이면 400 INVALID_RANGE
+          items:
+            type: object
+            required: [key]
+            properties:
+              key: { type: string }
+              included: { type: boolean }
+              params: { type: object }
+        added:
+          type: array
+          description: "+ 추가 (source: manual). 영역이 도구를 정한다(성능 k6 · 보안 zap · 코드 semgrep). 성능 · 보안은 api가 이번 API 목록에 있어야 하고(성능은 GET만 — 쓰기 · 삭제 API에 부하를 주지 않는다, NF-07) 코드는 target이 있어야 한다 — 아니면 400 NO_TARGET. 화면은 성능 대상 목록에 GET만 보여 준다. 원소가 null이거나 코드 없는 회차에 코드 품질(area code)을 추가하면 400 BAD_REQUEST. params에서 안 보낸 칸은 도구 기본값"
+          items:
+            type: object
+            required: [area, title, params]
+            properties:
+              area: { $ref: '#/components/schemas/Area' }
+              api: { type: string }
+              target: { type: string }
+              title: { type: string }
+              params: { type: object }
+
+    ProgressEvent:
+      type: object
+      description: 'event: progress'
+      required: [pct, leftMin, step, item]
+      properties:
+        pct: { type: integer }
+        leftMin: { type: integer }
+        step: { type: string, enum: [check, auth, sec, perf, code, report] }
+        item: { type: [string, 'null'] }
+    LogLine:
+      type: object
+      description: 'event: log'
+      required: [ts, tag, text]
+      properties:
+        ts: { type: string, format: date-time }
+        tag: { $ref: '#/components/schemas/LogTag' }
+        text: { type: string }
+    StopEvent:
+      type: object
+      description: 'event: error — 고객 서버 응답 멈춤 · 도구 실패(-228). 화면은 text를 팝업 제목으로 그대로 쓴다'
+      required: [step, item, title, ts, text, lines]
+      properties:
+        step: { type: string }
+        item: { type: string }
+        title: { type: string }
+        ts: { type: string, format: date-time }
+        text:
+          type: string
+          description: '`서버가 응답을 멈췄어요` · `검사 도구가 실패했어요 · <SkipReason>`(도구 받기 실패 · 도구 오류 — 자동으로 한 번 더 돌려도 실패, 쓰기 API 시나리오는 바로)'
+        lines: { type: array, items: { type: string } }
+    DoneEvent:
+      type: object
+      description: 'event: done'
+      required: [status]
+      properties:
+        status: { $ref: '#/components/schemas/RunStatus' }
+    RunProgress:
+      type: object
+      required: [status, pct, leftMin, steps, logs]
+      properties:
+        status: { $ref: '#/components/schemas/RunStatus' }
+        pct: { type: integer }
+        leftMin: { type: integer }
+        steps:
+          type: array
+          description: 단계 트리 (연결 확인 · 테스트 계정 · 1 보안 · 2 성능 · 3 코드 품질 · 결과 정리)
+          items:
+            type: object
+            required: [step, name, state, items]
+            properties:
+              step: { type: string, enum: [check, auth, sec, perf, code, report] }
+              name: { type: string }
+              state: { type: string, enum: [done, running, waiting, skipped] }
+              skipReason: { type: [string, 'null'], description: 'skipped일 때 "건너뜀(사유)"' }
+              items:
+                type: array
+                items:
+                  type: object
+                  required: [key, title, state]
+                  properties:
+                    key: { type: string }
+                    title: { type: string }
+                    state: { type: string, enum: [done, running, waiting, skipped] }
+                    skipReason: { type: [string, 'null'], description: 'skipped일 때 "건너뜀(사유)"' }
+        logs:
+          type: array
+          description: 최근 200줄
+          maxItems: 200
+          items: { $ref: '#/components/schemas/LogLine' }
+      example:
+        status: running
+        pct: 42
+        leftMin: 13
+        steps:
+          - { step: check, name: 연결 확인, state: done, items: [] }
+          - { step: auth, name: 테스트 계정, state: done, items: [{ key: sec-1, title: 테스트 계정 만들기, state: done }] }
+          - step: sec
+            name: 1 보안
+            state: done
+            items: [{ key: sec-2, title: 입력값 인젝션, state: done }, { key: sec-3, title: 남의 주문 보기, state: done }, { key: sec-4, title: 관리자 API 비로그인, state: done }, { key: sec-5, title: 남의 주문 취소, state: skipped, skipReason: 계정 없음 }, { key: sec-6, title: 로그인 무차별 대입, state: done }]
+          - step: perf
+            name: 2 성능
+            state: running
+            items: [{ key: perf-1, title: 주문 목록 피크, state: done }, { key: perf-2, title: 주문 상세 피크, state: running }, { key: perf-3, title: 주문 목록 순간 몰림, state: waiting }]
+          - { step: code, name: 3 코드 품질, state: waiting, items: [{ key: code-1, title: 하드코딩된 비밀값, state: waiting }, { key: code-2, title: 예외 처리, state: waiting }, { key: code-3, title: SQL 문자열 연결, state: waiting }] }
+          - { step: report, name: 결과 정리, state: waiting, items: [] }
+        logs:
+          - { ts: '2026-11-07T14:39:10+09:00', tag: k6, text: 'http_req_duration p(95)=487ms · vus=50' }
+          - { ts: '2026-11-07T14:39:11+09:00', tag: db, text: 'GET /api/orders sql.count=1240/req' }
+          - { ts: '2026-11-07T14:40:31+09:00', tag: k6, text: 'vus=120 · http_req_duration p(95)=2.1s' }
+
+    RunResult:
+      type: object
+      description: |
+        예시의 `passed`는 영역마다 일부만 적었다. 실제 응답은 영역 `summary.pass`와 그 영역 `passed` 줄 수가 같다 (F-RPT-04, !90 리뷰)
+      required: [runId, service, projectName, at, durationMin, scenarioCount, itemCount, status, codeSource, scores, summary, issues, passed, reportError]
+      properties:
+        runId: { type: string }
+        service: { type: string, description: '그 회차의 서비스 이름(스타터킷이 보낸 `spring.application.name`). 해제했거나 다른 서비스가 연결돼 있어도 그 회차의 서비스다(run.service_id, -223). 프로젝트 이름(`projectName`)을 고쳐도 바뀌지 않는다' }
+        projectName: { $ref: '#/components/schemas/ProjectName' }
+        at: { type: string, format: date-time }
+        durationMin: { type: integer }
+        scenarioCount: { type: integer }
+        itemCount: { type: integer }
+        status: { $ref: '#/components/schemas/RunStatus' }
+        codeSource:
+          oneOf:
+            - type: object
+              required: [type, commit, ref, fileHash]
+              properties:
+                type: { type: string, enum: [github, jar, zip, local] }
+                commit: { type: [string, 'null'] }
+                ref: { type: [string, 'null'], description: '그 회차 소스 대상 — 저장소 주소 · jar/war 경로 · ZIP 이름 · 폴더 (-224)' }
+                fileHash: { type: [string, 'null'], description: 'ZIP · jar · war 파일 sha256 앞 12자 (-224)' }
+            - type: 'null'
+        scores: { $ref: '#/components/schemas/Scores' }
+        summary:
+          type: object
+          required: [perf, sec, code]
+          properties:
+            perf: { $ref: '#/components/schemas/AreaSummary' }
+            sec: { $ref: '#/components/schemas/AreaSummary' }
+            code: { $ref: '#/components/schemas/AreaSummary' }
+        issues:
+          type: array
+          items: { $ref: '#/components/schemas/Issue' }
+        passed:
+          type: array
+          items: { $ref: '#/components/schemas/Passed' }
+        reportError:
+          oneOf: [{ $ref: '#/components/schemas/Error' }, { type: 'null' }]
+      example:
+        runId: run_5
+        service: order-api
+        projectName: order-api
+        at: '2026-11-07T14:35:00+09:00'
+        durationMin: 23
+        scenarioCount: 12
+        itemCount: 50
+        status: done
+        codeSource: { type: github, commit: a3f9c1, ref: 'https://github.com/owner/order-api', fileHash: null }
+        scores: { perf: 80, sec: 70, code: 90 }
+        summary:
+          perf: { line: 평소엔 빠르지만 200명에서 멈춰요, pass: 9, fail: 2, skipReason: null }
+          sec: { line: 대부분 막혔지만 한 곳이 뚫려요, pass: 20, fail: 1, skipReason: null }
+          code: { line: 건강해요 · 예외 처리 한 곳만, pass: 6, fail: 1, skipReason: null }
+        issues:
+          - id: s1
+            itemKey: sec-2
+            area: sec
+            level: danger
+            certainty: confirmed
+            title: 검색어 하나로 모든 주문이 보여요
+            tech: SQL 문자열 연결 · GET /api/orders
+            impact: 누구나 다른 사람의 주문을 꺼내 볼 수 있어요
+            asIs: { value: 뚫림, label: "검색어 ' OR 1=1 -- 입력 시 전체 주문" }
+            toBe: { value: 막힘, label: 같은 입력에 빈 결과 }
+            metrics:
+              - { name: 뚫린 입력값, now: 1곳, target: 0곳 }
+            suspectReason: null
+            where: 'GET /api/orders · OrderRepository.java:31'
+            cause: 검색어를 SQL 문장에 그대로 이어 붙여요
+            fix: { recommended: 바인딩 파라미터(?)로 바꾸기, alternative: JPA 메서드 쿼리로 바꾸기 }
+            passCriteria: ZAP SQL 인젝션 경고 0건
+            penalty: 30
+          - id: p1
+            itemKey: perf-2
+            area: perf
+            level: warn
+            certainty: confirmed
+            title: 200명이 되면 주문이 멈춰요
+            tech: '커넥션 풀 대기 · GET /api/orders/{id}'
+            impact: 세일처럼 사람이 몰리면 주문을 못 받아요
+            asIs: { value: 2.1s, label: 느린 요청 p95 · 200명 }
+            toBe: { value: 500ms 이내, label: 느린 요청 p95 · 200명 }
+            metrics:
+              - { name: DB 연결 대기 최대, now: 148건, target: 0건 }
+              - { name: 오류율, now: 1.2%, target: 1% 이하 }
+            suspectReason: null
+            where: 'GET /api/orders/{id} · application.yml'
+            cause: 동시에 쓸 수 있는 DB 연결이 모자라 요청이 줄을 서요
+            fix: { recommended: 쿼리 수를 줄이고 커넥션 풀 크기 조정, alternative: null }
+            passCriteria: 200명 p95 500ms 이내 · 오류율 1% 이하
+            penalty: 10
+          - id: p2
+            itemKey: perf-1
+            area: perf
+            level: warn
+            certainty: suspected
+            title: 주문 목록이 DB를 반복 호출해요
+            tech: N+1 의심 · GET /api/orders
+            impact: 사용자가 늘수록 급격히 느려져요 · 가장 많이 쓰는 화면이라 체감 효과가 커요
+            asIs: { value: 487ms, label: 느린 요청 p95 · 50명 }
+            toBe: { value: 500ms 이내, label: 느린 요청 p95 · 50명 }
+            metrics:
+              - { name: 요청당 DB 쿼리, now: '1,240회', target: 10회 이하 }
+              - { name: 같은 쿼리 반복, now: 98%, target: 50% 미만 }
+              - { name: 200명일 때, now: 멈춤 위험, target: 정상 응답 }
+            suspectReason: 코드가 아니라 쿼리 수 정황으로 추정 · 고친 뒤 재검사하면 확인됨으로 바뀜
+            where: 'GET /api/orders · OrderService.java:48'
+            cause: 목록을 만들 때 항목마다 DB를 따로 조회해요
+            fix: { recommended: 필요한 데이터를 한 번에 묶어 조회, alternative: 자주 쓰는 결과는 캐시 }
+            passCriteria: p95 500ms 이내 · 오류율 1% 이하
+            penalty: 10
+          - id: c1
+            itemKey: code-2
+            area: code
+            level: warn
+            certainty: confirmed
+            title: 결제 오류를 조용히 삼켜요
+            tech: 빈 catch · PaymentService.java:113
+            impact: 결제가 실패해도 기록이 남지 않아 원인을 못 찾아요
+            asIs: { value: 1곳, label: 빈 catch 블록 }
+            toBe: { value: 0곳, label: 빈 catch 블록 }
+            metrics:
+              - { name: 빈 catch, now: 1곳, target: 0곳 }
+            suspectReason: null
+            where: PaymentService.java:113
+            cause: 예외를 잡고 아무것도 하지 않아요
+            fix: { recommended: 로그를 남기고 다시 던지기, alternative: 정말 무시할 예외면 이유를 주석으로 }
+            passCriteria: Semgrep 빈 catch 경고 0건
+            penalty: 10
+        passed: [{ area: perf, name: 평소 응답 시간, value: 50명 p95 212ms }, { area: sec, name: 관리자 API 비로그인 차단, value: '/api/admin/* 6개 모두 401' }, { area: code, name: 하드코딩된 비밀값, value: 0건 }]
+        reportError: null
+
+    CodeSnippet:
+      type: object
+      required: [file, line, commit, branch, lines, decompiled]
+      properties:
+        branch: { type: [string, 'null'] }
+        file: { type: string }
+        line: { type: integer }
+        commit: { type: [string, 'null'] }
+        lines: { type: array, items: { type: string }, description: 앞뒤 몇 줄 }
+        decompiled: { type: boolean, description: true면 "디컴파일 기준" }
+    IssueDetail:
+      allOf:
+        - $ref: '#/components/schemas/Issue'
+        - type: object
+          required: [api, code, evidence, repro, prev, next]
+          properties:
+            api: { type: [string, 'null'], description: '7 헤더의 API (시나리오의 api, 코드 품질 시나리오면 null)' }
+            code:
+              oneOf: [{ $ref: '#/components/schemas/CodeSnippet' }, { type: 'null' }]
+            evidence: { type: array, items: { type: string }, description: 관측 근거 로그 }
+            repro:
+              type: object
+              description: 재현 조건 — 사람 수 · 시간 · 모양 · 주소는 검사 범위의 그 시나리오(`params` · `api`), 테스트 계정은 B3 `Repro.of(runId, itemKey)`. 범위에 없거나 해당 없는 칸은 null
+              required: [usersFrom, usersTo, durationMin, shape, api, testAccount]
+              properties:
+                usersFrom: { type: [integer, 'null'] }
+                usersTo: { type: [integer, 'null'] }
+                durationMin: { type: [integer, 'null'] }
+                shape: { type: [string, 'null'] }
+                api: { type: [string, 'null'] }
+                testAccount: { type: [string, 'null'] }
+            prev: { type: [string, 'null'], description: 이전 문제 id }
+            next: { type: [string, 'null'], description: 다음 문제 id }
+      example:
+        id: p2
+        itemKey: perf-1
+        api: GET /api/orders
+        area: perf
+        level: warn
+        certainty: suspected
+        title: 주문 목록이 DB를 반복 호출해요
+        tech: N+1 의심 · GET /api/orders
+        impact: 사용자가 늘수록 급격히 느려져요 · 가장 많이 쓰는 화면이라 체감 효과가 커요
+        asIs: { value: 487ms, label: 느린 요청 p95 · 50명 }
+        toBe: { value: 500ms 이내, label: 느린 요청 p95 · 50명 }
+        metrics:
+          - { name: 요청당 DB 쿼리, now: '1,240회', target: 10회 이하 }
+          - { name: 같은 쿼리 반복, now: 98%, target: 50% 미만 }
+          - { name: 200명일 때, now: 멈춤 위험, target: 정상 응답 }
+        suspectReason: 코드가 아니라 쿼리 수 정황으로 추정 · 고친 뒤 재검사하면 확인됨으로 바뀜
+        where: 'GET /api/orders · OrderService.java:48'
+        cause: 목록을 만들 때 항목마다 DB를 따로 조회해요
+        fix: { recommended: 필요한 데이터를 한 번에 묶어 조회, alternative: 자주 쓰는 결과는 캐시 }
+        passCriteria: p95 500ms 이내 · 오류율 1% 이하
+        penalty: 10
+        code:
+          file: src/main/java/com/shop/order/OrderController.java
+          line: 12
+          commit: a3f9c1
+          branch: main
+          lines:
+            - '10'
+            - '11    @GetMapping'
+            - '12    public List<Order> list(int page) {'
+            - '13        return orders.list(page);'
+            - '14    }'
+            - '15'
+          decompiled: false
+        evidence: ['[k6] http_req_duration p(95)=487ms · vus=50', '[db] GET /api/orders sql.count=1240/req']
+        repro: { usersFrom: 50, usersTo: 200, durationMin: 3, shape: ramp, api: GET /api/orders, testAccount: ddalkkak-test-7f2a }
+        prev: p1
+        next: c1
+
+    RunList:
+      type: object
+      required: [total, runs, trend]
+      properties:
+        total: { type: integer, description: '이 서비스의 전체 검사 횟수 (8 "검사 N번"). 서비스 이름은 /api/home, 회차마다의 이름은 `runs[].projectName`' }
+        runs:
+          type: array
+          items:
+            type: object
+            required: [runId, projectName, at, status, tags, scenarioCount, codeSource, scores, fixCount]
+            properties:
+              runId: { type: string }
+              projectName: { $ref: '#/components/schemas/ProjectName' }
+              at: { type: string, format: date-time }
+              status: { $ref: '#/components/schemas/RunStatus' }
+              tags:
+                type: array
+                description: '최신 · 첫 측정 · 일부 완료 · 중단. 일부 완료에는 멈춘 영역이 붙는다 ("일부 완료 · 성능 중단됨", 둘 이상이면 "일부 완료 · 성능 · 보안 중단됨")'
+                items: { type: string }
+              scenarioCount: { type: integer }
+              codeSource: { type: [string, 'null'], example: GitHub a3f9c1, description: null이면 "코드 없음" }
+              scores: { $ref: '#/components/schemas/Scores' }
+              fixCount: { type: integer, description: 고칠 점 N }
+        trend:
+          type: object
+          description: 영역별 최근 4번 점수 (오래된 것부터, 미검사는 null). 지난번 대비 증감은 여기가 아니라 화면이 runs에서 최신 점수와 그 앞에서 마지막으로 잰 회차를 비교해 계산한다(미검사 회차는 건너뜀 · 받은 목록 안). at은 같은 자리 막대의 검사 일시
+          required: [perf, sec, code, at]
+          properties:
+            perf: { type: array, items: { type: [integer, 'null'] }, maxItems: 4 }
+            sec: { type: array, items: { type: [integer, 'null'] }, maxItems: 4 }
+            code: { type: array, items: { type: [integer, 'null'] }, maxItems: 4 }
+            at: { type: array, items: { type: string, format: date-time }, maxItems: 4, description: '막대 아래 날짜. 점수 배열과 같은 길이 · 같은 회차 순서(오래된 것부터), runs[].at과 같은 값' }
+      example:
+        total: 4
+        runs:
+          - { runId: run_5, projectName: order-api, at: '2026-11-07T14:35:00+09:00', status: done, tags: [최신], scenarioCount: 12, codeSource: GitHub a3f9c1, scores: { perf: 80, sec: 70, code: 90 }, fixCount: 4 }
+          - { runId: run_4, projectName: 주문 서비스 v2, at: '2026-11-06T14:02:00+09:00', status: partial, tags: [일부 완료 · 성능 중단됨], scenarioCount: 10, codeSource: null, scores: { perf: 61, sec: 83, code: null }, fixCount: 3 }
+        trend: { perf: [54, null, 61, 80], sec: [80, 82, 83, 70], code: [null, null, null, 90], at: ['2026-11-04T14:00:00+09:00', '2026-11-05T14:00:00+09:00', '2026-11-06T14:02:00+09:00', '2026-11-07T14:35:00+09:00'] }

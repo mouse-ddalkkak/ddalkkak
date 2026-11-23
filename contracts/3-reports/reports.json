@@ -1,0 +1,312 @@
+{
+  "source": "docs/openapi.yaml ③ 예시에서 뽑음 · 고칠 때는 openapi.yaml을 고치고 python scripts/screen_contracts.py",
+  "calls": {
+    "POST /ai/reports": {
+      "summary": "검사 결과 원본 → 점수 · 쉬운 설명",
+      "owner": [
+        "B3",
+        "AI2"
+      ],
+      "headers": {
+        "X-AI-Provider": {
+          "required": false,
+          "enum": [
+            "claude",
+            "openai",
+            "custom"
+          ]
+        },
+        "X-AI-Base-Url": {
+          "required": false,
+          "type": "string"
+        },
+        "X-AI-Key": {
+          "required": false,
+          "type": "string"
+        },
+        "X-AI-Model": {
+          "required": false,
+          "type": "string"
+        }
+      },
+      "request": {
+        "runId": "run_5",
+        "service": {
+          "name": "order-api",
+          "framework": "Spring Boot 3.2"
+        },
+        "hasCode": true,
+        "conditions": {
+          "testAccount": "ddalkkak-test-7f2a"
+        },
+        "results": [
+          {
+            "itemKey": "perf-1",
+            "area": "perf",
+            "tool": "k6",
+            "api": "GET /api/orders",
+            "status": "done",
+            "params": {
+              "usersFrom": 50,
+              "usersTo": 200,
+              "durationMin": 3,
+              "shape": "ramp",
+              "failP95Ms": 500,
+              "failErrorRate": 0.01
+            },
+            "metrics": {
+              "p95Ms": 487,
+              "avgMs": 212,
+              "errorRate": 0.008,
+              "requests": 36000,
+              "dbQueriesPerRequest": 1240,
+              "poolWaitingMax": 148,
+              "hostCpuMax": 0.62,
+              "hostCpuAvg": 0.41
+            },
+            "findings": [],
+            "evidence": [
+              "[k6] http_req_duration p(95)=487ms · vus=50",
+              "[db] GET /api/orders sql.count=1240/req"
+            ]
+          },
+          {
+            "itemKey": "sec-2",
+            "area": "sec",
+            "tool": "zap",
+            "api": "GET /api/orders",
+            "status": "done",
+            "findings": [
+              {
+                "ruleId": "zap-40018",
+                "name": "SQL Injection",
+                "severity": "high",
+                "proven": true
+              }
+            ],
+            "evidence": [
+              "[zap] scan complete · alerts=6 high=1"
+            ],
+            "passed": [
+              {
+                "ruleId": "zap-10020",
+                "name": "Anti-clickjacking Header",
+                "value": "발견 없음"
+              },
+              {
+                "ruleId": "zap-10035",
+                "name": "Strict-Transport-Security Header",
+                "value": "발견 없음"
+              },
+              {
+                "ruleId": "ddalkkak-admin-open",
+                "name": "로그인 없이 관리자 GET /api/admin/users",
+                "value": "401 차단"
+              }
+            ]
+          },
+          {
+            "itemKey": "code-2",
+            "area": "code",
+            "tool": "semgrep",
+            "status": "done",
+            "findings": [
+              {
+                "ruleId": "out.ddalkkak.java.empty-catch",
+                "name": "예외를 삼키는 빈 catch — 장애가 조용히 묻혀요",
+                "severity": "warning",
+                "location": {
+                  "file": "PaymentService.java",
+                  "line": 113,
+                  "commit": "a3f9c1"
+                }
+              }
+            ],
+            "evidence": []
+          },
+          {
+            "itemKey": "sec-5",
+            "area": "sec",
+            "tool": "zap",
+            "status": "skipped",
+            "skipReason": "계정 없음"
+          }
+        ]
+      },
+      "responses": {
+        "200": {
+          "source": "default",
+          "scores": {
+            "perf": 90,
+            "sec": 70,
+            "code": 90
+          },
+          "summary": {
+            "perf": {
+              "line": "주의 1건 — 점검을 권해요",
+              "pass": 0,
+              "fail": 1,
+              "skip": 0,
+              "skipReasons": {},
+              "skipReason": null
+            },
+            "sec": {
+              "line": "위험 1건 — 바로 확인이 필요해요 · 미검사 1건",
+              "pass": 3,
+              "fail": 1,
+              "skip": 1,
+              "skipReasons": {
+                "계정 없음": 1
+              },
+              "skipReason": null
+            },
+            "code": {
+              "line": "주의 1건 — 점검을 권해요",
+              "pass": 0,
+              "fail": 1,
+              "skip": 0,
+              "skipReasons": {},
+              "skipReason": null
+            }
+          },
+          "issues": [
+            {
+              "id": "p1",
+              "itemKey": "perf-1",
+              "area": "perf",
+              "level": "warn",
+              "certainty": "suspected",
+              "title": "DB를 반복 호출하는 정황이 있어요",
+              "tech": "N+1 의심 · GET /api/orders",
+              "impact": "지금은 기준 안이지만 사용자가 늘면 급격히 느려질 수 있어요",
+              "asIs": {
+                "value": "1240회",
+                "label": "요청당 DB 쿼리"
+              },
+              "toBe": {
+                "value": "10회 이하",
+                "label": "요청당 DB 쿼리"
+              },
+              "metrics": [
+                {
+                  "name": "느린 요청 p95",
+                  "now": "487ms",
+                  "target": "500ms 이내"
+                },
+                {
+                  "name": "오류율",
+                  "now": "0.8%",
+                  "target": "1% 이하"
+                },
+                {
+                  "name": "요청당 DB 쿼리",
+                  "now": "1240회",
+                  "target": "10회 이하"
+                },
+                {
+                  "name": "커넥션 풀 대기 최대",
+                  "now": "148개",
+                  "target": "10개 미만"
+                },
+                {
+                  "name": "측정 중 앱 PC CPU 최대",
+                  "now": "62%",
+                  "target": "80% 미만"
+                }
+              ],
+              "suspectReason": "요청당 DB 쿼리 1240회 — 측정 정황으로 추정",
+              "where": "GET /api/orders",
+              "cause": "요청마다 같은 조회가 반복되는 것으로 보여요",
+              "fix": {
+                "recommended": "필요한 데이터를 한 번에 묶어 조회",
+                "alternative": "자주 쓰는 결과는 캐시"
+              },
+              "passCriteria": "p95 500ms 이내 · 오류율 1% 이하",
+              "penalty": 10,
+              "ruleId": null
+            },
+            {
+              "id": "s1",
+              "itemKey": "sec-2",
+              "area": "sec",
+              "level": "danger",
+              "certainty": "confirmed",
+              "title": "검색어로 SQL을 바꿔 남의 데이터까지 읽을 수 있어요",
+              "tech": "SQL 주입 · GET /api/orders",
+              "impact": "실제로 뚫린 구멍이라 데이터 유출·변조로 이어질 수 있어요",
+              "asIs": {
+                "value": "공격 성공",
+                "label": "SQL 주입"
+              },
+              "toBe": {
+                "value": "차단",
+                "label": "SQL 주입"
+              },
+              "metrics": [],
+              "suspectReason": null,
+              "where": "GET /api/orders",
+              "cause": "입력값이 SQL 문장에 그대로 들어가 따옴표 하나로 쿼리가 바뀌어요",
+              "fix": {
+                "recommended": "값을 문자열로 잇지 말고 파라미터 바인딩(:name · ?)으로 넘기기",
+                "alternative": "JPA 메서드 이름 쿼리나 Criteria로 바꾸기"
+              },
+              "passCriteria": "같은 공격 재검사에서 성공 0건",
+              "penalty": 30,
+              "ruleId": "zap-40018"
+            },
+            {
+              "id": "c1",
+              "itemKey": "code-2",
+              "area": "code",
+              "level": "warn",
+              "certainty": "confirmed",
+              "title": "예외를 잡고 아무것도 하지 않아요",
+              "tech": "빈 catch · PaymentService.java:113",
+              "impact": "방치하면 장애·보안 사고를 숨기거나 키울 수 있는 코드예요",
+              "asIs": {
+                "value": "1건",
+                "label": "발견"
+              },
+              "toBe": {
+                "value": "0건",
+                "label": "발견"
+              },
+              "metrics": [],
+              "suspectReason": null,
+              "where": "PaymentService.java:113",
+              "cause": "빈 catch가 오류를 삼켜서 장애가 나도 로그 · 알림이 남지 않아요",
+              "fix": {
+                "recommended": "최소한 로그를 남기고, 여기서 처리할 수 없으면 다시 던지기",
+                "alternative": "필요 없는 try-catch는 지우기"
+              },
+              "passCriteria": "재검사에서 error·warning 0건",
+              "penalty": 10,
+              "ruleId": "out.ddalkkak.java.empty-catch"
+            }
+          ],
+          "passed": [
+            {
+              "area": "sec",
+              "name": "클릭재킹 방지 헤더",
+              "value": "발견 없음"
+            },
+            {
+              "area": "sec",
+              "name": "HTTPS 강제(HSTS) 헤더",
+              "value": "발견 없음"
+            },
+            {
+              "area": "sec",
+              "name": "로그인 없이 관리자 GET /api/admin/users",
+              "value": "401 차단"
+            }
+          ]
+        },
+        "400": {
+          "code": "BAD_REQUEST",
+          "message": "요청 형식을 확인해 주세요"
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,4 @@
+# 테스트 전용 — 운영 이미지(Dockerfile)에는 들어가지 않는다. pip install -r requirements-dev.txt
+-r requirements.txt
+pytest==8.3.5
+httpx==0.28.1

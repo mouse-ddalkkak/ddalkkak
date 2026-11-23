@@ -1,0 +1,76 @@
+{
+  "source": "docs/openapi.yaml ① 예시에서 뽑음 · 고칠 때는 openapi.yaml을 고치고 python scripts/screen_contracts.py",
+  "calls": {
+    "POST /starter/v1/measures": {
+      "summary": "앱 안쪽 측정값 — 측정 중 1초마다",
+      "owner": [
+        "B2"
+      ],
+      "headers": {
+        "X-Ddalkkak-Token": {
+          "required": true,
+          "type": "string"
+        }
+      },
+      "request": {
+        "serviceId": "svc_1",
+        "runId": "run_5",
+        "samples": [
+          {
+            "ts": "2026-11-07T14:39:01+09:00",
+            "api": "GET /api/orders",
+            "requests": 52,
+            "dbQueriesPerRequest": 1240,
+            "dbWaitMs": 38,
+            "pool": {
+              "active": 20,
+              "max": 20,
+              "waiting": 148
+            }
+          },
+          {
+            "ts": "2026-11-07T14:39:01+09:00",
+            "api": "GET /api/orders/{id}",
+            "requests": 31,
+            "dbQueriesPerRequest": 3,
+            "dbWaitMs": 12,
+            "pool": {
+              "active": 20,
+              "max": 20,
+              "waiting": 148
+            }
+          }
+        ]
+      },
+      "request unmeasured": {
+        "serviceId": "svc_1",
+        "runId": "run_5",
+        "samples": [
+          {
+            "ts": "2026-11-07T14:39:01+09:00",
+            "api": "GET /api/orders",
+            "requests": 52,
+            "dbQueriesPerRequest": null,
+            "dbWaitMs": null,
+            "pool": null
+          }
+        ]
+      },
+      "responses": {
+        "204": null,
+        "400": {
+          "code": "BAD_REQUEST",
+          "message": "요청 형식을 확인해 주세요"
+        },
+        "401": {
+          "code": "STARTER_TOKEN_INVALID",
+          "message": "스타터킷 토큰이 맞지 않아요"
+        },
+        "404": {
+          "code": "NOT_FOUND",
+          "message": "찾을 수 없어요"
+        }
+      }
+    }
+  }
+}

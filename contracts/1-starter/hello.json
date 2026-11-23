@@ -1,0 +1,47 @@
+{
+  "source": "docs/openapi.yaml ① 예시에서 뽑음 · 고칠 때는 openapi.yaml을 고치고 python scripts/screen_contracts.py",
+  "calls": {
+    "POST /starter/v1/hello": {
+      "summary": "연결 요청 — 앱이 켜질 때",
+      "owner": [
+        "B2"
+      ],
+      "headers": {
+        "X-Ddalkkak-Token": {
+          "required": false,
+          "type": "string"
+        }
+      },
+      "request": {
+        "appName": "order-api",
+        "framework": "Spring Boot",
+        "frameworkVersion": "3.2.5",
+        "javaVersion": "17",
+        "buildTool": "Gradle",
+        "starterVersion": "1.4.0",
+        "host": "localhost",
+        "port": 8080,
+        "pid": 41822,
+        "runningCommit": "a3f9c1",
+        "artifact": "/home/me/order-api/build/libs/order-api.jar",
+        "workDir": "/home/me/order-api"
+      },
+      "responses": {
+        "200": {
+          "requestId": "req_7f2a",
+          "status": "pending",
+          "serviceId": null
+        },
+        "200 approved": {
+          "requestId": "req_8b31",
+          "status": "approved",
+          "serviceId": "svc_1"
+        },
+        "400": {
+          "code": "BAD_REQUEST",
+          "message": "요청 형식을 확인해 주세요"
+        }
+      }
+    }
+  }
+}

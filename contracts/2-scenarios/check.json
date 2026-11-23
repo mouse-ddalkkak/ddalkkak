@@ -1,0 +1,64 @@
+{
+  "source": "docs/openapi.yaml ② 예시에서 뽑음 · 고칠 때는 openapi.yaml을 고치고 python scripts/screen_contracts.py",
+  "calls": {
+    "POST /ai/check": {
+      "summary": "AI 키로 부를 수 있는지 확인",
+      "owner": [
+        "AI1"
+      ],
+      "headers": {
+        "X-AI-Provider": {
+          "required": false,
+          "enum": [
+            "claude",
+            "openai",
+            "custom"
+          ]
+        },
+        "X-AI-Base-Url": {
+          "required": false,
+          "type": "string"
+        },
+        "X-AI-Key": {
+          "required": false,
+          "type": "string"
+        },
+        "X-AI-Model": {
+          "required": false,
+          "type": "string"
+        }
+      },
+      "responses": {
+        "200 ok": {
+          "ok": true,
+          "shown": "Claude · 기본 모델",
+          "message": "연결됐어요"
+        },
+        "200 short": {
+          "ok": false,
+          "shown": null,
+          "message": "키가 너무 짧아요 · 다시 확인해 주세요"
+        },
+        "200 rejected": {
+          "ok": false,
+          "shown": null,
+          "message": "키가 맞지 않아요"
+        },
+        "200 timeout": {
+          "ok": false,
+          "shown": null,
+          "message": "AI가 응답하지 않아요"
+        },
+        "200 noKey": {
+          "ok": false,
+          "shown": null,
+          "message": "AI 키를 먼저 입력해 주세요"
+        },
+        "400": {
+          "code": "BAD_REQUEST",
+          "message": "요청 형식을 확인해 주세요"
+        }
+      }
+    }
+  }
+}
