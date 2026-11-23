@@ -119,6 +119,8 @@ public class ZapRunner {
 			if (item.api() == null) {
 				return writer.skip(row, "대상 없음");
 			}
+			// 앱 밖 경로면 확인 요청(-262)도 보내지 않고 도구 오류 — 확인 요청이 먼저 나가면 앱의 404 가 요청 구성 오류로 바꿔 버린다
+			appPath(item.api());
 			ApiCatalog.Endpoint endpoint = endpoint(run, item.api());
 			List<ApiCatalog.Param> params = endpoint == null ? List.of() : endpoint.params();
 			// 경로 변수는 목록 API 에서 찾은 실제 값으로 (-262). 확인 요청 · OpenAPI example 이 같은 값을 쓴다
@@ -316,17 +318,25 @@ public class ZapRunner {
 	}
 
 	/**
+	 * "GET /api/x" 의 경로. 경로는 servers.url 뒤에 붙는다 — "@evil.host/x" 는 호스트 자리를 바꾸고, "//evil.host/x" 는 ZAP 이 다른
+	 * 호스트로 풀 수 있어 IllegalArgumentException (→ 도구 오류)
+	 */
+	static String appPath(String api) {
+		String path = api.strip().substring(api.strip().indexOf(' ') + 1);
+		if (!path.startsWith("/") || path.startsWith("//")) {
+			throw new IllegalArgumentException("검사 대상 앱 밖 주소: " + path);
+		}
+		return path;
+	}
+
+	/**
 	 * @param values 경로 변수 → 찾은 값 ({@link PathValues}). 경로 변수는 그 값(없으면 {@link K6Script#PATH_VALUE}), 쿼리는 타입별 테스트
 	 * 값을 example 로 싣는다 — 값이 없으면 ZAP 이 변수 이름을 넣어 400 만 받는다 (-262)
 	 * @param dropped 싣지 않을 선택 쿼리 이름 — 테스트 값을 실으면 거절되고 빼면 되는 칸 (!160 리뷰 5-1 · 6-1)
 	 */
 	String openapi(String api, int port, ApiCatalog.Endpoint endpoint, Map<String, String> values, Set<String> dropped) {
 		String method = K6Script.method(api.strip()).toLowerCase(Locale.ROOT);
-		String path = api.strip().substring(api.strip().indexOf(' ') + 1);
-		// 경로는 servers.url 뒤에 붙는다 — "@evil.host/x" 는 호스트 자리를 바꾸고, "//evil.host/x" 는 ZAP 이 다른 호스트로 풀 수 있다
-		if (!path.startsWith("/") || path.startsWith("//")) {
-			throw new IllegalArgumentException("검사 대상 앱 밖 주소: " + path);
-		}
+		String path = appPath(api);
 		List<Map<String, Object>> params = new ArrayList<>();
 		if (endpoint != null && endpoint.params() != null) {
 			for (ApiCatalog.Param p : endpoint.params()) {
